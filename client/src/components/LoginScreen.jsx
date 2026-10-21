@@ -73,20 +73,6 @@ export default function LoginScreen({ lang, t, theme, onToggleTheme, onToggleLan
     }
   };
 
-  // Quick Demo Fast Login
-  const handleQuickDemo = (demoPin, demoUser, demoPass, mode) => {
-    sounds.tap();
-    setAuthMode(mode);
-    if (mode === 'agent') {
-      setPin(demoPin);
-      setUsername('');
-      setPassword('');
-    } else {
-      setUsername(demoUser);
-      setPassword(demoPass || demoPin);
-      setPin(demoPin);
-    }
-  };
 
   return (
     <div className={`login-page-container theme-${theme}`}>
@@ -296,39 +282,6 @@ export default function LoginScreen({ lang, t, theme, onToggleTheme, onToggleLan
             </form>
           )}
 
-          {/* Quick Demo Access Bar */}
-          <div className="login-demo-bar">
-            <span className="demo-bar-title">{t.demoCredentials || "Kont Demo pou Tès :"}</span>
-            <div className="demo-chips">
-              <button 
-                type="button" 
-                className="demo-chip"
-                onClick={() => handleQuickDemo('1234', 'agent1', 'agent123', 'agent')}
-                title="Konekte kòm Vandè 1"
-              >
-                <Store size={14} />
-                <span>Vandè 1 (PIN: 1234)</span>
-              </button>
-              <button 
-                type="button" 
-                className="demo-chip"
-                onClick={() => handleQuickDemo('5678', 'agent2', 'agent567', 'agent')}
-                title="Konekte kòm Vandè 2"
-              >
-                <Store size={14} />
-                <span>Vandè 2 (PIN: 5678)</span>
-              </button>
-              <button 
-                type="button" 
-                className="demo-chip admin"
-                onClick={() => handleQuickDemo('5090', 'admin', 'admin509', 'admin')}
-                title="Konekte kòm Admin Central"
-              >
-                <ShieldCheck size={14} />
-                <span>Admin (PIN: 5090)</span>
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>

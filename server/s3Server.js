@@ -6,11 +6,27 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const STORAGE_DIR = path.join(__dirname, 'data', 's3_storage');
 
-if (!fs.existsSync(STORAGE_DIR)) {
-  fs.mkdirSync(STORAGE_DIR, { recursive: true });
+// Only create storage dir in local dev (not available on Vercel)
+const IS_VERCEL = !!process.env.VERCEL;
+if (!IS_VERCEL) {
+  try {
+    if (!fs.existsSync(STORAGE_DIR)) {
+      fs.mkdirSync(STORAGE_DIR, { recursive: true });
+    }
+  } catch (e) {
+    console.warn('[S3 LOCAL] Could not create storage dir:', e.message);
+  }
 }
 
 export function registerS3LocalRoutes(app) {
+  // On Vercel: S3 local mock not available — return graceful JSON
+  if (IS_VERCEL) {
+    app.all('/s3/*', (req, res) => {
+      res.status(503).json({ error: 'S3 local storage not available in production. Use a real S3/R2 bucket.' });
+    });
+    return;
+  }
+
   // Handle S3 PUT Object
   app.put('/s3/:bucket/*', (req, res) => {
     try {
