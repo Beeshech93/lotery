@@ -482,7 +482,51 @@ body {
   color: var(--text-muted);
 }
 
-/* Game Mode Tabs */
+/* Countdown Timer Below Draw Cards */
+.draw-countdown {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 3px 8px;
+  border-radius: 6px;
+  margin-top: 4px;
+  letter-spacing: 0.03em;
+}
+
+.draw-countdown.countdown-ok {
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.draw-countdown.countdown-warning {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.draw-countdown.countdown-urgent {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.draw-countdown.countdown-critical {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.18);
+  animation: countdown-pulse 0.8s ease-in-out infinite alternate;
+}
+
+.draw-countdown.countdown-closed {
+  color: var(--text-muted);
+  background: rgba(128, 128, 128, 0.1);
+  font-weight: 500;
+}
+
+@keyframes countdown-pulse {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0.6; transform: scale(1.03); }
+}
 .game-modes-nav {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

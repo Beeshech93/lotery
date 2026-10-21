@@ -33,6 +33,35 @@ export default function PosScreen({
   // Cart plays
   const [cartPlays, setCartPlays] = useState([]);
   const [blockedNumbers, setBlockedNumbers] = useState([]);
+
+  // Live countdown tick (updates every second)
+  const [countdownTick, setCountdownTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setCountdownTick(prev => prev + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Format countdown from closesInMinutes (recalculated each second)
+  const formatCountdown = (closesInMinutes) => {
+    if (closesInMinutes <= 0) return null;
+    if (closesInMinutes > 720) return null; // skip if >12h (manual override)
+    // Get fractional seconds from the tick
+    const totalSeconds = Math.max(0, Math.floor(closesInMinutes * 60) - (countdownTick % 60));
+    const hours = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    if (hours > 0) {
+      return `${hours}h ${String(mins).padStart(2,'0')}m`;
+    }
+    return `${mins}m ${String(secs).padStart(2,'0')}s`;
+  };
+
+  const getCountdownColor = (closesInMinutes) => {
+    if (closesInMinutes <= 5) return 'countdown-critical';   // red pulsing
+    if (closesInMinutes <= 10) return 'countdown-urgent';    // red
+    if (closesInMinutes <= 30) return 'countdown-warning';   // orange
+    return 'countdown-ok';                                    // green
+  };
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -453,6 +482,22 @@ export default function PosScreen({
                       </span>
                     )}
                   </div>
+                  {/* Live Countdown Timer */}
+                  {draw.isOpen && draw.closesInMinutes > 0 && draw.closesInMinutes <= 720 && (
+                    <div className={`draw-countdown ${getCountdownColor(draw.closesInMinutes)}`}>
+                      <Clock size={12} />
+                      <span>
+                        {draw.closesInMinutes <= 5 ? '⚠️ ' : ''}
+                        {formatCountdown(draw.closesInMinutes) || '--:--'}
+                      </span>
+                    </div>
+                  )}
+                  {!draw.isOpen && draw.reopensInMinutes > 0 && (
+                    <div className="draw-countdown countdown-closed">
+                      <Lock size={12} />
+                      <span>{lang === 'ht' ? 'Relouvri nan' : 'Réouvre dans'} {draw.reopensInMinutes}m</span>
+                    </div>
+                  )}
                 </div>
               );
             })}
