@@ -382,7 +382,9 @@ class Store {
       return {
         ...draw,
         status: statusInfo.status,
+        isOpen: statusInfo.status === 'open',
         closesInMinutes: statusInfo.closesInMinutes,
+        reopensInMinutes: statusInfo.reopensInMinutes || 0,
         displayTime: draw.drawTime
       };
     });
@@ -409,12 +411,21 @@ class Store {
     const [cutoffH, cutoffM] = draw.cutoffTime.split(':').map(Number);
     const cutoffMinutes = cutoffH * 60 + cutoffM;
 
-    let diff = cutoffMinutes - currentMinutes;
+    // Reopen delay in minutes (default 30 min after cutoff)
+    const reopenDelay = draw.reopenDelay || 30;
+    const reopenMinutes = cutoffMinutes + reopenDelay;
 
-    if (diff > 0 && diff <= 1440) {
+    if (currentMinutes < cutoffMinutes) {
+      // Before cutoff → OPEN
+      const diff = cutoffMinutes - currentMinutes;
       return { status: 'open', closesInMinutes: diff };
+    } else if (currentMinutes >= cutoffMinutes && currentMinutes < reopenMinutes) {
+      // Between cutoff and reopen → CLOSED (waiting period)
+      return { status: 'closed', closesInMinutes: 0, reopensInMinutes: reopenMinutes - currentMinutes };
     } else {
-      return { status: 'closed', closesInMinutes: 0 };
+      // After reopen time → OPEN again (next day's draw)
+      const diff = (24 * 60 - currentMinutes) + cutoffMinutes; // minutes until next cutoff
+      return { status: 'open', closesInMinutes: diff };
     }
   }
 
