@@ -446,7 +446,12 @@ export default function PosScreen({
                     {lang === 'ht' ? draw.nameHt : draw.nameFr}
                   </div>
                   <div className="draw-time-info">
-                    <span>{t.closesAt}: {draw.cutoffTime}</span>
+                    <span>{t.closesAt}: {draw.localCutoffTime || draw.cutoffTime}</span>
+                    {draw.agentTzLabel && draw.originalCutoffTime !== draw.localCutoffTime && (
+                      <span className="draw-tz-original" style={{fontSize:'0.7em',opacity:0.6,display:'block',marginTop:'2px'}}>
+                        🇺🇸 {draw.originalCutoffTime} (NY)
+                      </span>
+                    )}
                   </div>
                 </div>
               );

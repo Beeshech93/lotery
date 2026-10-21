@@ -14,6 +14,15 @@ try {
 
 const DATA_FILE = path.join(__dirname, 'data', 'store.json');
 
+// Country → Timezone mapping for agent timezone fusion
+const COUNTRY_TIMEZONES = {
+  HT: { tz: 'America/Port-au-Prince', label: 'Haiti', flag: '🇭🇹' },
+  DO: { tz: 'America/Santo_Domingo', label: 'Rep. Dominicana', flag: '🇩🇴' },
+  BR: { tz: 'America/Sao_Paulo', label: 'Brasil', flag: '🇧🇷' },
+  MX: { tz: 'America/Mexico_City', label: 'México', flag: '🇲🇽' },
+  US: { tz: 'America/New_York', label: 'Estados Unidos', flag: '🇺🇸' }
+};
+
 // Ensure local data folder exists as backup/cache
 try {
   if (!fs.existsSync(path.join(__dirname, 'data'))) {
@@ -376,18 +385,89 @@ class Store {
     return this.data.config;
   }
 
-  getDraws() {
+  getDraws(agentTz = null) {
     return this.data.draws.map(draw => {
       const statusInfo = this.getDrawStatus(draw);
+      let localCutoff = draw.cutoffTime;
+      let localDrawTime = draw.drawTime;
+      let agentTzLabel = null;
+
+      // Convert draw times to agent's local timezone if different
+      if (agentTz && agentTz !== (draw.timeZone || 'America/New_York')) {
+        localCutoff = this.convertTime(draw.cutoffTime, draw.timeZone || 'America/New_York', agentTz);
+        localDrawTime = this.convertTime(draw.drawTime, draw.timeZone || 'America/New_York', agentTz);
+        // Find label for the agent timezone
+        const entry = Object.values(COUNTRY_TIMEZONES).find(c => c.tz === agentTz);
+        agentTzLabel = entry ? entry.label : agentTz;
+      }
+
       return {
         ...draw,
         status: statusInfo.status,
         isOpen: statusInfo.status === 'open',
         closesInMinutes: statusInfo.closesInMinutes,
         reopensInMinutes: statusInfo.reopensInMinutes || 0,
-        displayTime: draw.drawTime
+        displayTime: localDrawTime,
+        localCutoffTime: localCutoff,
+        localDrawTime: localDrawTime,
+        originalCutoffTime: draw.cutoffTime,
+        originalDrawTime: draw.drawTime,
+        agentTzLabel
       };
     });
+  }
+
+  // Convert HH:MM from one timezone to another using today's date
+  convertTime(timeStr, fromTz, toTz) {
+    try {
+      const [h, m] = timeStr.split(':').map(Number);
+      // Create a date in the source timezone
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+      // Build an absolute moment: today at h:m in fromTz
+      const srcDate = new Date(`${dateStr}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`);
+      // Get UTC offset for source timezone
+      const srcFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: fromTz, hour12: false, hour: '2-digit', minute: '2-digit',
+        year: 'numeric', month: '2-digit', day: '2-digit'
+      });
+      const dstFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: toTz, hour12: false, hour: '2-digit', minute: '2-digit'
+      });
+
+      // Use a reference date to calculate offset difference
+      // Create a fixed UTC time, then format in both timezones
+      const refUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
+      const refDate = new Date(refUtc);
+
+      // Get the source timezone's representation of this UTC time
+      const srcParts = srcFormatter.formatToParts(refDate);
+      const srcH = parseInt(srcParts.find(p => p.type === 'hour').value, 10);
+      const srcM = parseInt(srcParts.find(p => p.type === 'minute').value, 10);
+
+      // We need: when it's h:m in fromTz, what time is it in toTz?
+      // Offset = (srcH*60+srcM) - (h*60+m) means fromTz is ahead of UTC by this much
+      const srcOffset = (srcH * 60 + srcM) - (h * 60 + m);
+
+      // Now get toTz representation of the same UTC time
+      const dstParts = dstFormatter.formatToParts(refDate);
+      const dstH = parseInt(dstParts.find(p => p.type === 'hour').value, 10);
+      const dstM = parseInt(dstParts.find(p => p.type === 'minute').value, 10);
+      const dstOffset = (dstH * 60 + dstM) - (h * 60 + m);
+
+      // Target time = original time + (dstOffset - srcOffset)
+      const diff = dstOffset - srcOffset;
+      let totalMin = (h * 60 + m) + diff;
+      if (totalMin < 0) totalMin += 24 * 60;
+      if (totalMin >= 24 * 60) totalMin -= 24 * 60;
+
+      const rH = Math.floor(totalMin / 60);
+      const rM = totalMin % 60;
+      return `${String(rH).padStart(2, '0')}:${String(rM).padStart(2, '0')}`;
+    } catch (e) {
+      console.error('[TZ] convertTime error:', e.message);
+      return timeStr; // fallback to original
+    }
   }
 
   getDrawStatus(draw) {
@@ -1001,13 +1081,20 @@ class Store {
         const user = res.rows[0];
         await this.pgPool.query('UPDATE loto_users SET last_login = NOW() WHERE id = $1', [user.id]);
 
+        const country = user.country || 'HT';
+        const tzInfo = COUNTRY_TIMEZONES[country] || COUNTRY_TIMEZONES.HT;
+
         return {
           id: user.id,
           username: user.username,
           name: user.name,
           role: user.role, // 'admin' or 'agent'
           posId: user.pos_id || this.data.config.posId,
-          branchName: user.branch_name || this.data.config.branchName
+          branchName: user.branch_name || this.data.config.branchName,
+          country: country,
+          timezone: tzInfo.tz,
+          countryFlag: tzInfo.flag,
+          countryLabel: tzInfo.label
         };
       } catch (err) {
         if (err.message.includes('Identifiants') || err.message.includes('Tanpri')) {
@@ -1025,17 +1112,25 @@ class Store {
     let users = [];
     if (this.pgPool) {
       try {
-        const res = await this.pgPool.query('SELECT id, username, name, role, pos_id, branch_name, enabled, last_login, created_at FROM loto_users ORDER BY role, username');
-        users = res.rows.map(u => ({
-          id: u.id,
-          username: u.username,
-          name: u.name,
-          role: u.role,
-          posId: u.pos_id,
-          branchName: u.branch_name,
-          enabled: u.enabled,
-          lastLogin: u.last_login
-        }));
+        const res = await this.pgPool.query('SELECT id, username, name, role, pos_id, branch_name, country, enabled, last_login, created_at FROM loto_users ORDER BY role, username');
+        users = res.rows.map(u => {
+          const country = u.country || 'HT';
+          const tzInfo = COUNTRY_TIMEZONES[country] || COUNTRY_TIMEZONES.HT;
+          return {
+            id: u.id,
+            username: u.username,
+            name: u.name,
+            role: u.role,
+            posId: u.pos_id,
+            branchName: u.branch_name,
+            country: country,
+            timezone: tzInfo.tz,
+            countryFlag: tzInfo.flag,
+            countryLabel: tzInfo.label,
+            enabled: u.enabled,
+            lastLogin: u.last_login
+          };
+        });
       } catch (err) {
         console.error('[POSTGRES] getAgents error:', err.message);
       }
@@ -1063,23 +1158,25 @@ class Store {
     });
   }
 
-  async createAgent({ username, pin, password, name, posId, branchName, role = 'agent' }) {
+  async createAgent({ username, pin, password, name, posId, branchName, role = 'agent', country = 'HT' }) {
     const id = `usr_${Date.now()}`;
     const cleanUser = String(username).toLowerCase().trim();
+    const validCountry = COUNTRY_TIMEZONES[country] ? country : 'HT';
 
     if (this.pgPool) {
       try {
         await this.pgPool.query(`
-          INSERT INTO loto_users (id, username, pin, password, name, role, pos_id, branch_name)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        `, [id, cleanUser, String(pin), String(password || pin), name, role, posId, branchName]);
+          INSERT INTO loto_users (id, username, pin, password, name, role, pos_id, branch_name, country)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `, [id, cleanUser, String(pin), String(password || pin), name, role, posId, branchName, validCountry]);
       } catch (err) {
         console.error('[POSTGRES] createAgent error:', err.message);
         throw err;
       }
     }
 
-    return { id, username: cleanUser, pin, name, role, posId, branchName, enabled: true };
+    const tzInfo = COUNTRY_TIMEZONES[validCountry] || COUNTRY_TIMEZONES.HT;
+    return { id, username: cleanUser, pin, name, role, posId, branchName, country: validCountry, timezone: tzInfo.tz, countryFlag: tzInfo.flag, countryLabel: tzInfo.label, enabled: true };
   }
 
   async toggleAgentStatus(userId) {

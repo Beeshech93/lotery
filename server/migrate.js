@@ -116,6 +116,14 @@ export async function runMigration() {
       CREATE INDEX IF NOT EXISTS idx_results_draw ON loto_results(draw_id, draw_date);
     `);
 
+    // Add country column for timezone fusion (safe to run multiple times)
+    try {
+      await client.query(`ALTER TABLE loto_users ADD COLUMN IF NOT EXISTS country VARCHAR(5) DEFAULT 'HT'`);
+      console.log('[MIGRATION] country column ensured on loto_users.');
+    } catch (e) {
+      console.warn('[MIGRATION] country column may already exist:', e.message);
+    }
+
     console.log('[MIGRATION] Tables & Indexes created successfully in Neon.');
 
     // Seed initial data if tables are empty

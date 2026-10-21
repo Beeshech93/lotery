@@ -175,7 +175,8 @@ app.put('/api/config', async (req, res) => {
 // Draws Endpoints
 app.get('/api/draws', (req, res) => {
   try {
-    res.json(db.getDraws());
+    const agentTz = req.query.agentTz || null;
+    res.json(db.getDraws(agentTz));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

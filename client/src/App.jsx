@@ -88,9 +88,10 @@ export default function App() {
   // Initial data loading
   const loadInitialData = async () => {
     try {
+      const tzParam = currentUser?.timezone ? `?agentTz=${encodeURIComponent(currentUser.timezone)}` : '';
       const [configRes, drawsRes, ticketsRes] = await Promise.all([
         fetch('/api/config'),
-        fetch('/api/draws'),
+        fetch(`/api/draws${tzParam}`),
         fetch('/api/tickets?status=active')
       ]);
 
@@ -127,7 +128,8 @@ export default function App() {
     // Poll draws every 30 seconds for real-time status and time updates
     const interval = setInterval(async () => {
       try {
-        const res = await fetch('/api/draws');
+        const tzParam = currentUser?.timezone ? `?agentTz=${encodeURIComponent(currentUser.timezone)}` : '';
+        const res = await fetch(`/api/draws${tzParam}`);
         if (res.ok) {
           const data = await res.json();
           setDraws(data);
@@ -278,11 +280,11 @@ export default function App() {
         {/* Right Tools (User Pill, Language, Theme, Logout) */}
         <div className="navbar-actions">
           {/* Active User Pill */}
-          <div className="user-nav-badge" title={`${currentUser.name} (${currentUser.branchName || ''})`}>
+          <div className="user-nav-badge" title={`${currentUser.name} (${currentUser.branchName || ''}) ${currentUser.countryLabel || ''}`}>
             {currentUser.role === 'admin' ? (
               <span className="user-role-icon admin">👑</span>
             ) : (
-              <span className="user-role-icon agent">👤</span>
+              <span className="user-role-icon agent">{currentUser.countryFlag || '👤'}</span>
             )}
             <div className="user-nav-details">
               <span className="user-nav-name">{currentUser.name?.split(' ')[0] || currentUser.username}</span>

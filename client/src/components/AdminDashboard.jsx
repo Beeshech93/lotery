@@ -25,7 +25,8 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated 
     username: '',
     pin: '',
     posId: '',
-    branchName: ''
+    branchName: '',
+    country: 'HT'
   });
   const [newBlock, setNewBlock] = useState({
     drawId: 'all',
@@ -115,7 +116,7 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated 
         throw new Error(err.error || 'Erè nan kreyasyon');
       }
       setShowAddAgent(false);
-      setNewAgent({ name: '', username: '', pin: '', posId: '', branchName: '' });
+      setNewAgent({ name: '', username: '', pin: '', posId: '', branchName: '', country: 'HT' });
       fetchDashboardData();
     } catch (err) {
       sounds.error();
@@ -378,6 +379,19 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated 
                   onChange={e => setNewAgent({...newAgent, branchName: e.target.value})}
                 />
               </div>
+              <div className="form-row">
+                <select
+                  value={newAgent.country || 'HT'}
+                  onChange={e => setNewAgent({...newAgent, country: e.target.value})}
+                  style={{padding:'10px',borderRadius:'8px',background:'var(--bg-card)',color:'var(--text-primary)',border:'1px solid var(--border-color)',fontSize:'0.95rem'}}
+                >
+                  <option value="HT">🇭🇹 Haiti</option>
+                  <option value="DO">🇩🇴 Rep. Dominicana</option>
+                  <option value="BR">🇧🇷 Brasil</option>
+                  <option value="MX">🇲🇽 México</option>
+                  <option value="US">🇺🇸 Estados Unidos</option>
+                </select>
+              </div>
               <div className="form-actions">
                 <button type="submit" className="btn-confirm-add">
                   {lang === 'ht' ? "Anrejistre Vandè" : "Enregistrer Vendeur"}
@@ -407,8 +421,8 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated 
                   <tr key={a.id} className={!a.enabled ? 'row-disabled' : ''}>
                     <td>
                       <div className="agent-name-cell">
-                        <span className="agent-display-name">{a.name}</span>
-                        <span className="agent-user-tag">@{a.username} • {a.role === 'admin' ? '👑 Admin' : '👤 Vandè'}</span>
+                        <span className="agent-display-name">{a.countryFlag || '👤'} {a.name}</span>
+                        <span className="agent-user-tag">@{a.username} • {a.role === 'admin' ? '👑 Admin' : '👤 Vandè'} • {a.countryLabel || 'Haiti'}</span>
                       </div>
                     </td>
                     <td>
