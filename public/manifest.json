@@ -1,0 +1,10 @@
+{
+  "name": "Lotery POS Demo",
+  "short_name": "Lotery POS",
+  "description": "Prototype POS de démonstration en français et kreyòl ayisyen",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#101a33",
+  "lang": "fr"
+}
