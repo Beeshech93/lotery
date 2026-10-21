@@ -1006,43 +1006,7 @@ class Store {
       }
     }
 
-    // Local fallback authentication
-    const cleanPin = pin ? String(pin).trim() : null;
-    const cleanUser = username ? String(username).toLowerCase().trim() : null;
-
-    if (cleanPin === '5090' || (cleanUser === 'admin' && (password === 'admin509' || password === 'admin123' || password === '5090'))) {
-      return {
-        id: 'usr_admin',
-        username: 'admin',
-        name: 'Administrateur Central LOTO509',
-        role: 'admin',
-        posId: 'POS-ADMIN-00',
-        branchName: 'Direksyon Jeneral LOTO509'
-      };
-    }
-
-    if (cleanPin === '1234' || (cleanUser === 'agent1' && (password === 'agent123' || password === '1234'))) {
-      return {
-        id: 'usr_agent_01',
-        username: 'agent1',
-        name: 'Jean-Baptiste Pierre (Petyonvil)',
-        role: 'agent',
-        posId: 'POS-SUNMI-01',
-        branchName: 'Santral Petyonvil / Pétion-Ville'
-      };
-    }
-
-    if (cleanPin === '5678' || (cleanUser === 'agent2' && (password === 'agent567' || password === '5678'))) {
-      return {
-        id: 'usr_agent_02',
-        username: 'agent2',
-        name: 'Marie-Claire Joseph (Dèlma)',
-        role: 'agent',
-        posId: 'POS-SUNMI-02',
-        branchName: 'Sikisal Dèlma 33 / Delmas'
-      };
-    }
-
+    // No local fallback — all auth goes through PostgreSQL
     throw new Error('PIN oswa modpas la pa kòrèk / Identifiants incorrects');
   }
 

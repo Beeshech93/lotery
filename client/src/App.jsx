@@ -34,13 +34,6 @@ export default function App() {
 
   // Authenticated user state
   const [currentUser, setCurrentUser] = useState(() => {
-    const userParam = urlParams.get('user');
-    if (userParam === 'admin') {
-      return { id: 'usr_admin', username: 'admin', name: 'Administrateur Central LOTO509', role: 'admin', posId: 'POS-ADMIN-00', branchName: 'Direksyon Jeneral LOTO509' };
-    }
-    if (userParam === 'agent1') {
-      return { id: 'usr_agent_01', username: 'agent1', name: 'Jean-Baptiste Pierre (Petyonvil)', role: 'agent', posId: 'POS-SUNMI-01', branchName: 'Santral Petyonvil / Pétion-Ville' };
-    }
     const saved = localStorage.getItem('loto509_user');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) {}
