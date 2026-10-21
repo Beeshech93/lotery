@@ -1,0 +1,20 @@
+{
+  "name": "lotery-backend",
+  "version": "1.0.0",
+  "description": "Backend API pou Sistèm Bòlèt POS New York, Florida, Georgia",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test:s3": "node test-s3.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1154.0",
+    "@aws-sdk/s3-request-presigner": "^3.1154.0",
+    "cors": "^2.8.5",
+    "dotenv": "^18.0.8",
+    "express": "^4.21.2",
+    "pg": "^8.23.1"
+  }
+}

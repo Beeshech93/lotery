@@ -1,0 +1,26 @@
+{
+  "name": "lotery-bollette-pos",
+  "version": "1.0.0",
+  "description": "Sistèm Bòlèt POS New York, Florida, Georgia - Kreyòl & Français",
+  "type": "module",
+  "scripts": {
+    "dev:server": "npm run --prefix server dev",
+    "dev:client": "npm run --prefix client dev",
+    "start": "node server/index.js",
+    "build": "npm run --prefix client build",
+    "vercel-build": "npm run --prefix client build",
+    "test:s3": "npm run --prefix server test:s3",
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"blue,green\" \"npm run dev:server\" \"npm run dev:client\""
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1154.0",
+    "@aws-sdk/s3-request-presigner": "^3.1154.0",
+    "cors": "^2.8.5",
+    "dotenv": "^18.0.8",
+    "express": "^4.21.2",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
