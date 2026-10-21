@@ -4481,3 +4481,450 @@ body {
   color: #0f172a !important;
 }
 
+/* ==========================================================================
+   RESPONSIVE DESIGN — POS TERMINALS, TABLETS & MOBILE
+   ========================================================================== */
+
+/* ─── Tablet & Small Desktop (≤1120px) ─────────────────────────── */
+@media (max-width: 1120px) {
+  .pos-screen-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .pos-main-content {
+    padding: 1rem 1.25rem;
+  }
+
+  .draw-cards-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+
+  .pos-cart-section {
+    order: -1; /* Cart on top for tablet portrait */
+  }
+
+  .recent-tickets-panel {
+    display: none; /* Hide recent tickets list on tablet to save space */
+  }
+
+  .cart-items-scroll {
+    max-height: 200px;
+  }
+}
+
+/* ─── POS Terminal & Mobile (≤768px) ────────────────────────────── */
+@media (max-width: 768px) {
+  /* ── Navbar ── */
+  .pos-navbar {
+    padding: 0.6rem 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .brand-logo-badge {
+    width: 38px;
+    height: 38px;
+  }
+
+  .brand-title {
+    font-size: 1.1rem;
+  }
+
+  .brand-subtitle {
+    font-size: 0.65rem;
+  }
+
+  /* Hide tab text labels on small screens, show only icons */
+  .nav-tab-btn span {
+    display: none;
+  }
+
+  .nav-tab-btn {
+    padding: 0.55rem 0.75rem;
+    gap: 0;
+  }
+
+  .navbar-tabs {
+    gap: 0.2rem;
+    padding: 0.25rem;
+  }
+
+  /* Compact right actions */
+  .btn-lang-toggle .lang-name-pill,
+  .btn-theme-toggle .theme-name-pill,
+  .btn-logout .logout-text,
+  .user-nav-details {
+    display: none;
+  }
+
+  .btn-lang-toggle,
+  .btn-theme-toggle,
+  .btn-logout {
+    padding: 0.5rem;
+  }
+
+  .user-nav-badge {
+    padding: 0.35rem;
+  }
+
+  .navbar-actions {
+    gap: 0.5rem;
+  }
+
+  /* ── Main Content ── */
+  .pos-main-content {
+    padding: 0.75rem;
+  }
+
+  /* ── POS Grid ── */
+  .pos-screen-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  /* Cart first on mobile */
+  .pos-cart-section {
+    order: -1;
+  }
+
+  .recent-tickets-panel {
+    display: none;
+  }
+
+  /* ── Draw Cards ── */
+  .draw-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.6rem;
+  }
+
+  .draw-card {
+    padding: 0.65rem 0.75rem;
+  }
+
+  .draw-name {
+    font-size: 0.88rem;
+  }
+
+  .draw-time-info {
+    font-size: 0.68rem;
+  }
+
+  .lottery-draws-container {
+    padding: 0.85rem;
+  }
+
+  /* ── Game Mode Tabs ── */
+  .game-modes-nav {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.4rem;
+  }
+
+  .game-mode-tab {
+    padding: 0.65rem 0.3rem;
+    font-size: 0.82rem;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .shortcut-num {
+    display: none;
+  }
+
+  /* ── Play Form ── */
+  .pos-play-form {
+    padding: 1rem;
+    gap: 0.85rem;
+  }
+
+  .inputs-row {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .pos-input {
+    font-size: 1.8rem;
+    padding: 1rem 1.1rem;
+    text-align: center;
+  }
+
+  .btn-add-play {
+    width: 100%;
+    padding: 1rem;
+    font-size: 1.05rem;
+  }
+
+  /* ── Quick Amounts ── */
+  .quick-amounts-bar {
+    gap: 0.4rem;
+  }
+
+  .btn-quick-amt {
+    padding: 0.55rem 0.75rem;
+    font-size: 0.85rem;
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+  }
+
+  .quick-label {
+    display: none;
+  }
+
+  /* ── Keypad ── */
+  .pos-touch-keypad {
+    padding: 1rem;
+  }
+
+  .keypad-btn {
+    font-size: 2rem;
+    padding: 1.2rem 0.5rem;
+  }
+
+  .keypad-enter-btn {
+    padding: 1.2rem;
+    font-size: 1.1rem;
+  }
+
+  /* ── Cart ── */
+  .cart-card {
+    border-radius: var(--radius-md);
+  }
+
+  .cart-items-scroll {
+    min-height: 150px;
+    max-height: 220px;
+  }
+
+  .cart-table {
+    font-size: 0.88rem;
+  }
+
+  .play-num {
+    font-size: 1.1rem;
+  }
+
+  .total-val {
+    font-size: 1.6rem;
+  }
+
+  .btn-validate-print {
+    padding: 1rem;
+    font-size: 1.1rem;
+  }
+
+  /* ── Admin Dashboard ── */
+  .admin-stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.75rem !important;
+  }
+
+  .admin-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .admin-panel {
+    padding: 1rem !important;
+  }
+}
+
+/* ─── Small POS / Sunmi T2s (≤480px) ────────────────────────────── */
+@media (max-width: 480px) {
+  html {
+    font-size: 15px;
+  }
+
+  .pos-navbar {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .brand-logo-badge {
+    width: 34px;
+    height: 34px;
+  }
+
+  .brand-title {
+    font-size: 1rem;
+  }
+
+  /* Draw cards: 3 columns compact */
+  .draw-cards-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.4rem;
+  }
+
+  .draw-card {
+    padding: 0.5rem;
+  }
+
+  .draw-name {
+    font-size: 0.75rem;
+  }
+
+  .draw-state-badge {
+    font-size: 0.65rem;
+  }
+
+  .draw-time-info {
+    display: none;
+  }
+
+  /* Keypad bigger touch targets */
+  .keypad-btn {
+    font-size: 2.2rem;
+    padding: 1.4rem 0.5rem;
+    border-radius: var(--radius-sm);
+  }
+
+  .keypad-grid {
+    gap: 0.55rem;
+  }
+
+  .keypad-enter-btn {
+    padding: 1.35rem;
+    font-size: 1.2rem;
+  }
+
+  /* Inputs full size for touch */
+  .pos-input {
+    font-size: 2.2rem;
+    padding: 1.1rem;
+  }
+
+  /* Quick amounts horizontal scroll */
+  .quick-amounts-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+
+  .btn-quick-amt {
+    flex-shrink: 0;
+  }
+
+  /* Game tabs compact */
+  .game-mode-tab {
+    padding: 0.55rem 0.2rem;
+    font-size: 0.75rem;
+  }
+
+  /* Cart compact */
+  .cart-header {
+    padding: 0.85rem 1rem;
+  }
+
+  .cart-footer {
+    padding: 0.9rem 1rem;
+  }
+
+  .total-val {
+    font-size: 1.4rem;
+  }
+
+  .btn-validate-print {
+    font-size: 1rem;
+    padding: 0.9rem;
+  }
+
+  /* Sticky bottom print bar on small screens */
+  .cart-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    background: rgba(4, 7, 14, 0.98);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border-glass);
+  }
+
+  /* Admin stats single column on tiny screens */
+  .admin-stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ─── Landscape on mobile phones ─────────────────────────────────── */
+@media (max-height: 500px) and (orientation: landscape) {
+  .pos-navbar {
+    padding: 0.4rem 1rem;
+  }
+
+  .pos-main-content {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .lottery-draws-container {
+    padding: 0.6rem;
+  }
+
+  .draw-cards-grid {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0.4rem;
+  }
+
+  .draw-name {
+    font-size: 0.7rem;
+  }
+
+  .pos-touch-keypad {
+    padding: 0.6rem;
+  }
+
+  .keypad-btn {
+    padding: 0.75rem;
+    font-size: 1.5rem;
+  }
+
+  .keypad-grid {
+    gap: 0.4rem;
+  }
+
+  .pos-screen-grid {
+    grid-template-columns: 1fr 380px;
+    gap: 0.75rem;
+  }
+
+  .pos-cart-section {
+    order: unset;
+  }
+}
+
+/* ─── Touch-specific improvements (all touch screens) ───────────── */
+@media (hover: none) and (pointer: coarse) {
+  /* Bigger tap targets for all interactive elements */
+  .nav-tab-btn,
+  .game-mode-tab,
+  .btn-quick-amt,
+  .btn-add-play,
+  .btn-validate-print,
+  .keypad-btn,
+  .keypad-enter-btn {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  /* Disable hover transforms that don't make sense on touch */
+  .draw-card:hover,
+  .game-mode-tab:hover,
+  .btn-add-play:hover,
+  .btn-quick-amt:hover,
+  .keypad-btn:hover {
+    transform: none;
+  }
+
+  /* Active press feedback */
+  .keypad-btn:active {
+    transform: scale(0.94);
+    background: var(--cyan-primary);
+    color: #000;
+  }
+
+  .btn-quick-amt:active {
+    transform: scale(0.96);
+  }
+
+  .game-mode-tab:active {
+    transform: scale(0.96);
+  }
+}
+
