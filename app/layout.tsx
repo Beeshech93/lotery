@@ -5,6 +5,7 @@ export const metadata: Metadata = {
   title: "Lotery POS — Démonstration",
   description: "Prototype POS en français et kreyòl ayisyen. Mode démonstration uniquement.",
   applicationName: "Lotery POS",
+  manifest: "/manifest.json",
 };
 
 export const viewport: Viewport = {
