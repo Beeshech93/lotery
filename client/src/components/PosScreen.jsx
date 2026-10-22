@@ -298,6 +298,28 @@ export default function PosScreen({
     }
   };
 
+  // Add all pair numbers for bolette mode
+  const handleAddAllPairs = () => {
+    const pairs = ["11","22","33","44","55","66","77","88","99","00"];
+    const amt = parseFloat(amount);
+    if (isNaN(amt) || amt <= 0) {
+      setErrorMsg(t.enterValidAmount);
+      sounds.error();
+      return;
+    }
+    pairs.forEach(pair => {
+      const blockedRule = getBlockedRule('bolette', pair, '', selectedDrawId);
+      if (blockedRule && blockedRule.amount === 0) {
+        // Skip blocked numbers
+        return;
+      }
+      setCartPlays(prev => [...prev, { gameType: 'bolette', numbers: [pair], amount: amt }]);
+    });
+    sounds.add();
+    setNum1('');
+    num1Ref.current?.focus();
+  };
+
   // Remove a single play from cart
   const handleRemovePlay = (idx) => {
     sounds.tap();
@@ -632,6 +654,7 @@ export default function PosScreen({
                 <Plus size={20} />
                 <span>{t.addPlay}</span>
               </button>
+              <button type="button" className="btn-add-all-pairs" onClick={handleAddAllPairs}>Add All Pairs</button>
             </div>
           </div>
 

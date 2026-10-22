@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pg from 'pg';
+// TODO: Verify PostgreSQL connection handling and secure credentials
 import dotenv from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -728,19 +729,39 @@ class Store {
     );
   }
 
-  async cancelTicket(ticketId) {
+  async cancelTicket(ticketId, userRole = 'agent') {
     const ticket = this.getTicketById(ticketId);
     if (!ticket) throw new Error("Tikè sa a pa egziste / Ticket non trouvé");
     if (ticket.status === 'cancelled') throw new Error("Tikè a te deja anile / Billet déjà annulé");
     if (ticket.status === 'paid') throw new Error("Tikè sa a deja peye / Billet déjà payé");
 
-    const createdTime = new Date(ticket.createdAt).getTime();
-    const nowTime = new Date().getTime();
-    const diffMinutes = (nowTime - createdTime) / (1000 * 60);
+    const draw = this.data.draws.find(d => d.id === ticket.drawId);
 
-    const maxMins = this.data.config.cancellationWindowMinutes || 5;
-    if (diffMinutes > maxMins) {
-      throw new Error(`Dela pou anile tikè a depase (${maxMins} minit maksimòm).`);
+    // Rule: Admin can cancel ticket anytime before draw closes.
+    // Agent can only cancel within 5 minutes of ticket creation AND before draw closes.
+    if (userRole === 'admin') {
+      if (draw) {
+        const drawStatus = this.getDrawStatus(draw);
+        if (drawStatus.status !== 'open') {
+          throw new Error("Tiraj la deja fèmen. Pa ka anile tikè a apre fèti tiraj la. / La lotería ya cerró.");
+        }
+      }
+    } else {
+      const createdTime = new Date(ticket.createdAt).getTime();
+      const nowTime = new Date().getTime();
+      const diffMinutes = (nowTime - createdTime) / (1000 * 60);
+
+      const maxMins = this.data.config.cancellationWindowMinutes || 5;
+      if (diffMinutes > maxMins) {
+        throw new Error(`Dela pou ajan anile tikè a depase (${maxMins} minit maksimòm). Kontakte yon administratè.`);
+      }
+
+      if (draw) {
+        const drawStatus = this.getDrawStatus(draw);
+        if (drawStatus.status !== 'open') {
+          throw new Error("Tiraj la deja fèmen. Pa ka anile tikè a. / La lotería ya cerró.");
+        }
+      }
     }
 
     ticket.status = 'cancelled';

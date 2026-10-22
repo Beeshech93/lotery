@@ -159,10 +159,12 @@ export default function App() {
 
   // Cancel ticket action
   const handleCancelTicket = async (ticketId) => {
-    if (!window.confirm(t.confirmCancel)) return;
+    if (!window.confirm(t.confirmCancel || "Èske ou vle anile tikè sa a? / Confirmer l'annulation?")) return;
     try {
       const res = await fetch(`/api/tickets/${ticketId}/cancel`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: currentUser?.role || 'agent' })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erè nan anilasyon tikè");
@@ -334,6 +336,8 @@ export default function App() {
             lang={lang}
             t={t}
             onDrawsUpdated={loadInitialData}
+            onReprintTicket={handleReprintTicket}
+            onCancelTicket={handleCancelTicket}
           />
         )}
 

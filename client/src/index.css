@@ -1981,10 +1981,12 @@ body {
 
 .receipt-modal-content {
   width: 100%;
+  max-height: 94vh;
   background: #0f172a;
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-xl);
-  overflow: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   box-shadow: 0 30px 60px -10px rgba(0, 0, 0, 0.9);
   display: flex;
   flex-direction: column;
@@ -2048,28 +2050,63 @@ body {
 
 /* Authentic Realistic Thermal Paper Look */
 .thermal-receipt-paper {
-  background: #ffffff;
-  color: #000000;
-  font-family: var(--font-mono);
-  padding: 1.4rem 1.15rem;
-  margin: 1.25rem auto;
-  border-radius: 4px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-  font-size: 11px;
-  line-height: 1.4;
+  /* Premium receipt styling with glassmorphism */
+  --receipt-bg: #ffffff;
+  --receipt-fg: #000000;
+  --receipt-shadow: rgba(0, 0, 0, 0.3);
+  background: var(--receipt-bg);
+  color: var(--receipt-fg);
+  font-family: var(--font-mono), 'Inter', sans-serif;
+  padding: 1.6rem 1.3rem;
+  margin: 1.5rem auto;
+  border-radius: 8px;
+  box-shadow: 0 12px 40px var(--receipt-shadow);
+  font-size: clamp(10px, 2.4vw, 13px);
+  line-height: 1.6;
   user-select: text;
   position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(4px);
+}
+
+/* Subtle torn edge effect */
+.thermal-receipt-paper::before {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 0.8rem;
+  background: linear-gradient(90deg, transparent, var(--receipt-bg) 50%, transparent);
+  opacity: 0.15;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .thermal-receipt-paper {
+    --receipt-bg: #1e1e1e;
+    --receipt-fg: #e0e0e0;
+    --receipt-shadow: rgba(255, 255, 255, 0.2);
+  }
+}
+
+/* Responsive paper widths */
+.paper-58mm, .paper-80mm {
+  width: 100%;
+  max-width: 340px; /* Supports up to 80mm */
+  margin: 0 auto;
+}
+
+/* Slightly larger font for 80mm mode */
+.paper-80mm {
+  font-size: clamp(11px, 2.6vw, 13px);
+  width: 370px;
+  max-width: 370px;
 }
 
 .paper-58mm {
   width: 290px;
   max-width: 290px;
-}
-
-.paper-80mm {
-  width: 370px;
-  max-width: 370px;
-  font-size: 12px;
 }
 
 .receipt-header {

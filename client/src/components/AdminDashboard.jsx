@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { sounds } from '../soundEffects';
 
-export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated }) {
+export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated, onReprintTicket, onCancelTicket }) {
   const [agents, setAgents] = useState([]);
   const [report, setReport] = useState(null);
   const [dbStatus, setDbStatus] = useState(null);
@@ -806,6 +806,7 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated 
                 <th>{t.playsCount || "Jwèt"}</th>
                 <th>{t.totalTicket || "Montan"}</th>
                 <th>{t.status || "Eta"}</th>
+                <th>{lang === 'ht' ? "Aksyon" : "Actions"}</th>
               </tr>
             </thead>
             <tbody>
@@ -831,11 +832,66 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated 
                        ticket.status === 'cancelled' ? '❌ ANILE' : 'VALAB'}
                     </span>
                   </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      {onReprintTicket && (
+                        <button
+                          type="button"
+                          className="btn-action-icon"
+                          onClick={() => onReprintTicket(ticket)}
+                          title={lang === 'ht' ? "Gade / Enprime resi a" : "Voir / Imprimer le reçu"}
+                          style={{
+                            padding: '4px 8px',
+                            background: 'rgba(6, 182, 212, 0.15)',
+                            border: '1px solid rgba(6, 182, 212, 0.4)',
+                            color: '#06b6d4',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '11px',
+                            fontWeight: '600'
+                          }}
+                        >
+                          <Printer size={13} />
+                          <span>{lang === 'ht' ? "Resi" : "Reçu"}</span>
+                        </button>
+                      )}
+                      {ticket.status === 'active' && onCancelTicket && (
+                        <button
+                          type="button"
+                          className="btn-action-icon"
+                          onClick={async () => {
+                            await onCancelTicket(ticket.id);
+                            fetchDashboardData();
+                          }}
+                          title={lang === 'ht' ? "Anile tikè sa a (anvan tiraj la fèmen)" : "Annuler ce billet (avant fermeture de tirage)"}
+                          style={{
+                            padding: '4px 8px',
+                            background: 'rgba(239, 68, 68, 0.15)',
+                            border: '1px solid rgba(239, 68, 68, 0.4)',
+                            color: '#ef4444',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '11px',
+                            fontWeight: '600'
+                          }}
+                        >
+                          <Trash2 size={13} />
+                          <span>{lang === 'ht' ? "Anile" : "Annuler"}</span>
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
               {filteredTickets.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center py-4">
+                  <td colSpan={8} className="text-center py-4">
                     {lang === 'ht' ? "Pa gen tikè jwenn" : "Aucun billet trouvé"}
                   </td>
                 </tr>

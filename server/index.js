@@ -223,7 +223,8 @@ app.get('/api/tickets/:id', (req, res) => {
 
 app.post('/api/tickets/:id/cancel', async (req, res) => {
   try {
-    const cancelled = await db.cancelTicket(req.params.id);
+    const { role } = req.body || {};
+    const cancelled = await db.cancelTicket(req.params.id, role);
     res.json({ success: true, message: "Tikè anile avèk siksè / Billet annulé avec succès", ticket: cancelled });
   } catch (err) {
     res.status(400).json({ error: err.message });
