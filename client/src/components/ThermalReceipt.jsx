@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { Printer, X, Check, Copy } from 'lucide-react';
+import { Printer, X, Check, Copy, Trash2, AlertTriangle } from 'lucide-react';
 import { sounds } from '../soundEffects';
 
-export default function ThermalReceipt({ ticket, config, lang, t, onClose }) {
+export default function ThermalReceipt({ ticket, config, lang, t, onClose, onCancelTicket }) {
   const [qrUrl, setQrUrl] = useState('');
   const [paperWidth, setPaperWidth] = useState('58mm'); // '58mm' or '80mm'
   const [copied, setCopied] = useState(false);
@@ -105,6 +105,23 @@ export default function ThermalReceipt({ ticket, config, lang, t, onClose }) {
             <p className="receipt-phone">{config?.phone}</p>
             <div className="receipt-divider-dashed"></div>
           </div>
+
+          {ticket.status === 'cancelled' && (
+            <div style={{
+              background: '#fee2e2',
+              color: '#dc2626',
+              border: '2px dashed #ef4444',
+              borderRadius: '6px',
+              padding: '6px 10px',
+              margin: '8px 0',
+              textAlign: 'center',
+              fontWeight: '900',
+              fontSize: '11px',
+              letterSpacing: '1px'
+            }}>
+              ❌ TIKÈ ANILE / BILLET ANNULÉ
+            </div>
+          )}
 
           {/* Draw & Ticket Meta */}
           <div className="receipt-meta">
@@ -219,6 +236,33 @@ export default function ThermalReceipt({ ticket, config, lang, t, onClose }) {
             {copied ? <Check size={16} /> : <Copy size={16} />}
             <span>{copied ? "Kopye!" : ticket.securityCode}</span>
           </button>
+
+          {ticket.status !== 'cancelled' && ticket.status !== 'paid' && onCancelTicket && (
+            <button 
+              type="button"
+              className="btn-print-action btn-cancel-receipt"
+              onClick={async () => {
+                await onCancelTicket(ticket.id);
+                onClose();
+              }}
+              style={{
+                background: 'rgba(239, 68, 68, 0.16)',
+                border: '1px solid rgba(239, 68, 68, 0.5)',
+                color: '#ef4444',
+                fontWeight: '700',
+                fontSize: '0.82rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '0.55rem 0.95rem',
+                borderRadius: '8px'
+              }}
+            >
+              <Trash2 size={16} />
+              <span>{lang === 'ht' ? "Anile Tikè Sa a" : "Annuler ce Billet"}</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

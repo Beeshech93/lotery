@@ -1172,6 +1172,18 @@ body {
   color: #fff;
 }
 
+.btn-recent-action.btn-cancel {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #ef4444;
+}
+
+.btn-recent-action.btn-cancel:hover {
+  background: rgba(239, 68, 68, 0.35);
+  border-color: #ef4444;
+  color: #fff;
+}
+
 .badge-cancelled {
   font-size: 0.7rem;
   font-weight: 800;

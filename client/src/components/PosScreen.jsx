@@ -857,7 +857,7 @@ export default function PosScreen({
                         onClick={() => onCancelTicket(ticket.id)}
                         title={t.cancelTicket}
                       >
-                        <RotateCcw size={14} />
+                        <Trash2 size={14} />
                         <span>{t.cancelTicket}</span>
                       </button>
                     )}

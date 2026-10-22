@@ -360,7 +360,9 @@ export default function App() {
             config={config}
             lang={lang}
             t={t}
+            currentUser={currentUser}
             onReprintTicket={handleReprintTicket}
+            onCancelTicket={handleCancelTicket}
           />
         )}
 
@@ -401,6 +403,7 @@ export default function App() {
           lang={lang}
           t={t}
           onClose={() => setPrintModalTicket(null)}
+          onCancelTicket={handleCancelTicket}
         />
       )}
     </div>

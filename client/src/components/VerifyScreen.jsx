@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { 
   Search, CheckCircle2, XCircle, Award, DollarSign, 
-  Clock, ShieldCheck, Printer, AlertTriangle 
+  Clock, ShieldCheck, Printer, AlertTriangle, Trash2 
 } from 'lucide-react';
 import { sounds } from '../soundEffects';
 
-export default function VerifyScreen({ config, lang, t, onReprintTicket }) {
+export default function VerifyScreen({ config, lang, t, currentUser, onReprintTicket, onCancelTicket }) {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -225,6 +225,60 @@ export default function VerifyScreen({ config, lang, t, onReprintTicket }) {
                 </button>
               </div>
             )}
+
+            {/* Quick Actions (Reprint & Cancel) */}
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem', flexWrap: 'wrap' }}>
+              {onReprintTicket && (
+                <button 
+                  type="button"
+                  className="btn-pill"
+                  onClick={() => onReprintTicket(result.ticket)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '0.65rem 1.1rem',
+                    borderRadius: '8px',
+                    background: 'rgba(6, 182, 212, 0.15)',
+                    border: '1px solid rgba(6, 182, 212, 0.4)',
+                    color: '#06b6d4',
+                    fontWeight: '700',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Printer size={16} />
+                  <span>{lang === 'ht' ? "Gade Resi a" : "Voir le Reçu"}</span>
+                </button>
+              )}
+
+              {!result.isCancelled && !result.isPaid && onCancelTicket && (
+                <button 
+                  type="button"
+                  className="btn-pill"
+                  onClick={async () => {
+                    await onCancelTicket(result.ticket.id);
+                    handleSearch();
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '0.65rem 1.1rem',
+                    borderRadius: '8px',
+                    background: 'rgba(239, 68, 68, 0.18)',
+                    border: '1px solid rgba(239, 68, 68, 0.5)',
+                    color: '#ef4444',
+                    fontWeight: '700',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Trash2 size={16} />
+                  <span>{lang === 'ht' ? "Anile Tikè Sa a" : "Annuler ce Billet"}</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
