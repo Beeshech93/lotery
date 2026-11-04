@@ -110,8 +110,21 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated,
 
   useEffect(() => {
     fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 20000);
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchDashboardData, 5000);
+
+    const onTicketCreated = (e) => {
+      const newTicket = e.detail;
+      if (newTicket) {
+        setTickets(prev => [newTicket, ...prev.filter(t => t.id !== newTicket.id)]);
+      }
+      fetchDashboardData();
+    };
+    window.addEventListener('loto:ticket-created', onTicketCreated);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('loto:ticket-created', onTicketCreated);
+    };
   }, []);
 
   const handleManualRefresh = () => {
@@ -1677,14 +1690,15 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated,
       {/* MODAL: Agent & Moderator Profile & Exclusive Transactions */}
       {selectedUserModal && (() => {
         const userTickets = tickets.filter(t => 
-          t.sellerId === selectedUserModal.username ||
-          t.posId === selectedUserModal.posId ||
-          (t.sellerName && t.sellerName === selectedUserModal.name)
+          (selectedUserModal.username && (t.sellerId === selectedUserModal.username || t.posId === selectedUserModal.username)) ||
+          (selectedUserModal.posId && (t.posId === selectedUserModal.posId || t.sellerId === selectedUserModal.posId)) ||
+          (selectedUserModal.name && (t.sellerName === selectedUserModal.name || t.sellerId === selectedUserModal.name)) ||
+          (selectedUserModal.id && (t.sellerId === selectedUserModal.id))
         );
 
         const totalUserSales = userTickets
           .filter(t => t.status !== 'cancelled')
-          .reduce((sum, t) => sum + (Number(t.totalCost) || 0), 0);
+          .reduce((sum, t) => sum + (Number(t.totalAmount || t.totalCost) || 0), 0);
 
         const totalUserPayouts = userTickets
           .filter(t => t.status === 'won' || t.status === 'paid')
@@ -2264,7 +2278,7 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated,
                               </span>
                             </td>
                             <td style={{ padding: '8px 10px', fontWeight: 700 }}>
-                              {currencySymbol} {Number(ticket.totalCost).toFixed(2)}
+                              {currencySymbol} {Number(ticket.totalAmount || ticket.totalCost || 0).toFixed(2)}
                             </td>
                             <td style={{ padding: '8px 10px' }}>
                               {isWon ? (

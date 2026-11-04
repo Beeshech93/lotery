@@ -907,7 +907,73 @@ class Store {
     return newTicket;
   }
 
-  getTickets(filter = {}) {
+  async getTickets(filter = {}) {
+    if (this.pgPool) {
+      try {
+        const queryParts = [];
+        const params = [];
+        let pIndex = 1;
+
+        if (filter.drawId) {
+          queryParts.push(`draw_id = $${pIndex++}`);
+          params.push(filter.drawId);
+        }
+        if (filter.status) {
+          if (filter.status === 'active' || filter.status === 'pending') {
+            queryParts.push(`status IN ('active', 'pending')`);
+          } else {
+            queryParts.push(`status = $${pIndex++}`);
+            params.push(filter.status);
+          }
+        }
+        if (filter.date) {
+          queryParts.push(`draw_date = $${pIndex++}`);
+          params.push(filter.date);
+        }
+        if (filter.sellerId) {
+          queryParts.push(`(seller_id = $${pIndex} OR pos_id = $${pIndex} OR seller_name = $${pIndex})`);
+          params.push(filter.sellerId);
+          pIndex++;
+        } else if (filter.sellerIds && Array.isArray(filter.sellerIds) && filter.sellerIds.length > 0) {
+          queryParts.push(`(seller_id = ANY($${pIndex}) OR pos_id = ANY($${pIndex}) OR seller_name = ANY($${pIndex}))`);
+          params.push(filter.sellerIds);
+          pIndex++;
+        }
+
+        const whereClause = queryParts.length > 0 ? `WHERE ${queryParts.join(' AND ')}` : '';
+        const sql = `SELECT * FROM loto_tickets ${whereClause} ORDER BY created_at DESC LIMIT 500`;
+        const res = await this.pgPool.query(sql, params);
+        if (res.rows.length > 0) {
+          return res.rows.map(t => ({
+            id: t.id,
+            barcode: t.barcode,
+            securityCode: t.security_code,
+            drawId: t.draw_id,
+            drawNameFr: t.draw_name_fr,
+            drawNameHt: t.draw_name_ht,
+            drawDate: t.draw_date,
+            drawTime: t.draw_time,
+            totalAmount: Number(t.total_amount),
+            currency: t.currency,
+            currencySymbol: t.currency_symbol,
+            status: t.status,
+            plays: typeof t.plays === 'string' ? JSON.parse(t.plays) : t.plays,
+            winnings: typeof t.winnings === 'string' ? JSON.parse(t.winnings) : t.winnings,
+            branchName: t.branch_name,
+            posId: t.pos_id,
+            sellerId: t.seller_id,
+            sellerName: t.seller_name || t.seller_id || "Agent POS",
+            cancelledAt: t.cancelled_at,
+            paidAt: t.paid_at,
+            paidBy: t.paid_by,
+            createdAt: t.created_at
+          }));
+        }
+      } catch (err) {
+        console.error('[POSTGRES] getTickets error:', err.message);
+      }
+    }
+
     let result = this.data.tickets;
     if (filter.drawId) result = result.filter(t => t.drawId === filter.drawId);
     if (filter.status) {
@@ -919,7 +985,7 @@ class Store {
     }
     if (filter.date) result = result.filter(t => t.drawDate === filter.date);
     if (filter.sellerId) {
-      result = result.filter(t => t.sellerId === filter.sellerId || t.posId === filter.sellerId);
+      result = result.filter(t => t.sellerId === filter.sellerId || t.posId === filter.sellerId || t.sellerName === filter.sellerId);
     }
     if (filter.sellerIds && Array.isArray(filter.sellerIds) && filter.sellerIds.length > 0) {
       result = result.filter(t => 
@@ -1266,21 +1332,33 @@ class Store {
     return this.data.results.sort((a, b) => new Date(b.enteredAt) - new Date(a.enteredAt));
   }
 
-  getDailyReport(dateStr, filter = {}) {
+  async getDailyReport(dateStr, filter = {}) {
     const today = dateStr || getLocalDrawDate();
-    let tickets = this.data.tickets.filter(t => t.drawDate === today);
+    let tickets = [];
+    try {
+      tickets = await this.getTickets({ 
+        date: today, 
+        sellerId: filter.sellerId, 
+        sellerIds: filter.sellerIds 
+      });
+    } catch (e) {
+      console.error('[DB] getDailyReport getTickets error:', e.message);
+    }
 
-    const allowedSellers = [];
-    if (filter.sellerId) allowedSellers.push(filter.sellerId);
-    if (filter.posId) allowedSellers.push(filter.posId);
-    if (Array.isArray(filter.sellerIds)) allowedSellers.push(...filter.sellerIds);
+    if (!tickets || tickets.length === 0) {
+      tickets = this.data.tickets.filter(t => t.drawDate === today);
+      const allowedSellers = [];
+      if (filter.sellerId) allowedSellers.push(filter.sellerId);
+      if (filter.posId) allowedSellers.push(filter.posId);
+      if (Array.isArray(filter.sellerIds)) allowedSellers.push(...filter.sellerIds);
 
-    if (allowedSellers.length > 0) {
-      tickets = tickets.filter(t => 
-        allowedSellers.includes(t.sellerId) || 
-        allowedSellers.includes(t.posId) ||
-        allowedSellers.includes(t.sellerName)
-      );
+      if (allowedSellers.length > 0) {
+        tickets = tickets.filter(t => 
+          allowedSellers.includes(t.sellerId) || 
+          allowedSellers.includes(t.posId) ||
+          allowedSellers.includes(t.sellerName)
+        );
+      }
     }
 
     let totalSales = 0;
@@ -1551,11 +1629,36 @@ class Store {
     }
 
     const today = getLocalDrawDate();
-    const todayTickets = this.data.tickets.filter(t => t.drawDate === today && t.status !== 'cancelled');
+    let todayTickets = [];
+    if (this.pgPool) {
+      try {
+        const tRes = await this.pgPool.query(
+          "SELECT id, total_amount, pos_id, seller_id, seller_name FROM loto_tickets WHERE draw_date = $1 AND status != 'cancelled'",
+          [today]
+        );
+        todayTickets = tRes.rows.map(r => ({
+          totalAmount: Number(r.total_amount),
+          posId: r.pos_id,
+          sellerId: r.seller_id,
+          sellerName: r.seller_name
+        }));
+      } catch (e) {
+        console.error('[POSTGRES] getAgents tickets error:', e.message);
+      }
+    }
+    if (todayTickets.length === 0) {
+      todayTickets = this.data.tickets.filter(t => t.drawDate === today && t.status !== 'cancelled');
+    }
 
     return users.map(u => {
-      const agentTickets = todayTickets.filter(t => t.posId === u.posId || t.sellerId === u.username || t.sellerId === u.name);
-      const totalSales = agentTickets.reduce((sum, t) => sum + t.totalAmount, 0);
+      const agentTickets = todayTickets.filter(t => 
+        t.posId === u.posId || 
+        t.sellerId === u.username || 
+        t.sellerId === u.name ||
+        t.sellerName === u.name ||
+        t.sellerId === u.id
+      );
+      const totalSales = agentTickets.reduce((sum, t) => sum + (Number(t.totalAmount) || 0), 0);
       return {
         ...u,
         todaySales: totalSales,

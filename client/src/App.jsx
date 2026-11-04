@@ -162,6 +162,11 @@ export default function App() {
   const handleTicketCreated = (ticket) => {
     setRecentTickets(prev => [ticket, ...prev]);
     setPrintModalTicket(ticket);
+    try {
+      window.dispatchEvent(new CustomEvent('loto:ticket-created', { detail: ticket }));
+    } catch (e) {
+      // ignore
+    }
   };
 
   // Cancel ticket action

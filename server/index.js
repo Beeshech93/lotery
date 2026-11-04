@@ -230,7 +230,7 @@ app.get('/api/tickets', async (req, res) => {
       const agents = await db.getAgents({ supervisorId, teamName });
       sellerIds = agents.flatMap(a => [a.username, a.posId, a.name]);
     }
-    res.json(db.getTickets({ drawId, status, date, sellerId, sellerIds }));
+    res.json(await db.getTickets({ drawId, status, date, sellerId, sellerIds }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -336,7 +336,7 @@ app.get('/api/reports/daily', async (req, res) => {
       const agents = await db.getAgents({ supervisorId, teamName });
       sellerIds = agents.flatMap(a => [a.username, a.posId, a.name]);
     }
-    res.json(db.getDailyReport(date, { sellerId, posId, sellerIds }));
+    res.json(await db.getDailyReport(date, { sellerId, posId, sellerIds }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
