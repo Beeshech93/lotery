@@ -13,7 +13,70 @@ const PORT = process.env.PORT || 4000;
 registerS3LocalRoutes(app);
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '1mb' })); // Protect against large body payload attacks
+
+// Maximum Security HTTP Headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), camera=(), microphone=()');
+  res.removeHeader('X-Powered-By');
+  next();
+});
+
+// Security: Brute Force & Rate Limit Protection
+const authLockoutMap = new Map(); // identifier -> { attempts, lockedUntil }
+const apiRateLimitMap = new Map(); // ip -> { count, windowStart }
+
+function checkBruteForceLockout(identifier) {
+  const now = Date.now();
+  const record = authLockoutMap.get(identifier);
+  if (record && record.lockedUntil && record.lockedUntil > now) {
+    const minsLeft = Math.ceil((record.lockedUntil - now) / 60000);
+    return `Aksè bloke pou rezon sekirite: Twòp tantativ PIN ki echwe. Tanpri tann ${minsLeft} minit / Bloqué temporairement: trop de tentatives.`;
+  }
+  return null;
+}
+
+function recordAuthFailure(identifier) {
+  const now = Date.now();
+  const record = authLockoutMap.get(identifier) || { attempts: 0, lockedUntil: null };
+  record.attempts += 1;
+  if (record.attempts >= 5) {
+    record.lockedUntil = now + (15 * 60 * 1000); // 15 minutes lockout after 5 failed tries
+    record.attempts = 0;
+  }
+  authLockoutMap.set(identifier, record);
+}
+
+function recordAuthSuccess(identifier) {
+  authLockoutMap.delete(identifier);
+}
+
+// Global IP Rate Limiter (Protects against DDoS / Ticket flood)
+app.use((req, res, next) => {
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const limitWindow = 60 * 1000; // 1 minute
+  const maxRequests = 150; // 150 requests/minute per IP
+
+  const ipRecord = apiRateLimitMap.get(clientIp) || { count: 0, windowStart: now };
+  if (now - ipRecord.windowStart > limitWindow) {
+    ipRecord.count = 1;
+    ipRecord.windowStart = now;
+  } else {
+    ipRecord.count += 1;
+  }
+  apiRateLimitMap.set(clientIp, ipRecord);
+
+  if (ipRecord.count > maxRequests) {
+    return res.status(429).json({ error: "Twòp demann sou sèvè a (Rate Limit Exceeded). Tanpri tann kèk segond." });
+  }
+  next();
+});
 
 // Wait for DB initialization (critical for Vercel serverless cold starts)
 app.use(async (req, res, next) => {
@@ -41,11 +104,21 @@ app.use((req, res, next) => {
 
 // Auth & Agent Management Endpoints
 app.post('/api/auth/login', async (req, res) => {
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  const identifier = String(req.body.pin || req.body.username || clientIp).trim().toLowerCase();
+  
+  const lockError = checkBruteForceLockout(identifier);
+  if (lockError) {
+    return res.status(429).json({ error: lockError });
+  }
+
   try {
     const { username, pin, password, deviceId } = req.body;
     const user = await db.authenticateUser({ username, pin, password, deviceId });
+    recordAuthSuccess(identifier);
     res.json({ success: true, user });
   } catch (err) {
+    recordAuthFailure(identifier);
     res.status(401).json({ error: err.message || "Erè koneksyon / Erreur d'authentification" });
   }
 });
@@ -115,7 +188,10 @@ app.get('/api/blocked-numbers', (req, res) => {
 
 app.post('/api/blocked-numbers', async (req, res) => {
   try {
-    const { drawId, number, gameType, amount, reason } = req.body;
+    const { drawId, number, gameType, amount, reason, requesterRole } = req.body;
+    if (requesterRole && requesterRole !== 'admin') {
+      return res.status(403).json({ error: "Aksè Refize: Sèl Administratè Santral ki ka bloke nimewo." });
+    }
     const item = await db.addBlockedNumber({ drawId, number, gameType, amount, reason });
     res.status(201).json(item);
   } catch (err) {
@@ -125,6 +201,10 @@ app.post('/api/blocked-numbers', async (req, res) => {
 
 app.delete('/api/blocked-numbers/:id', async (req, res) => {
   try {
+    const requesterRole = req.body?.requesterRole || req.query.requesterRole;
+    if (requesterRole && requesterRole !== 'admin') {
+      return res.status(403).json({ error: "Aksè Refize: Sèl Administratè Santral ki ka debloke nimewo." });
+    }
     const result = await db.removeBlockedNumber(req.params.id);
     res.json(result);
   } catch (err) {
@@ -192,6 +272,10 @@ app.get('/api/config', (req, res) => {
 
 app.put('/api/config', async (req, res) => {
   try {
+    const { requesterRole } = req.body;
+    if (requesterRole && requesterRole !== 'admin') {
+      return res.status(403).json({ error: "Aksè Refize: Sèl Administratè Santral ki gen dwa modifye konfigirasyon an." });
+    }
     const updated = await db.updateConfig(req.body);
     res.json(updated);
   } catch (err) {
@@ -211,7 +295,10 @@ app.get('/api/draws', (req, res) => {
 
 app.post('/api/draws/:id/override', async (req, res) => {
   try {
-    const { status } = req.body; // 'open', 'closed', or null
+    const { status, requesterRole } = req.body; // 'open', 'closed', or null
+    if (requesterRole && requesterRole !== 'admin') {
+      return res.status(403).json({ error: "Aksè Refize: Sèl Administratè Santral ki gen dwa chanje estati tiraj la." });
+    }
     const updated = await db.toggleDrawOverride(req.params.id, status);
     res.json(updated);
   } catch (err) {
@@ -276,8 +363,19 @@ app.post('/api/tickets/verify', async (req, res) => {
       return res.status(404).json({ error: "Tikè sa a pa jwenn nan sistèm nan / Ce billet n'existe pas" });
     }
 
+    // Cryptographic signature check: detect fraudulent or tampered tickets
+    const isAuthentic = db.verifyTicketSignature ? db.verifyTicketSignature(ticket) : true;
+    if (!isAuthentic) {
+      return res.status(403).json({
+        error: "ALÈT SEKRITE: Fòsifikasyon detekte! Tikè sa a te modifye oswa li fòje (Siyati nimerik kase / Billet altéré).",
+        tampered: true,
+        ticket
+      });
+    }
+
     res.json({
       ticket,
+      isAuthentic: true,
       isWinner: ticket.status === 'won' || (ticket.status === 'paid' && ticket.winnings?.totalWon > 0),
       isPaid: ticket.status === 'paid',
       isCancelled: ticket.status === 'cancelled',
@@ -310,7 +408,7 @@ app.get('/api/results', (req, res) => {
 app.post('/api/results', async (req, res) => {
   try {
     const { drawId, drawDate, lot1, lot2, lot3, pick3, pick4, role } = req.body;
-    if (role && role !== 'admin') {
+    if (!role || role !== 'admin') {
       return res.status(403).json({ 
         error: "Aksè Refize: Sèl Administratè Santral ki gen dwa pibliye rezilta tiraj / Accès refusé: Seul l'administrateur peut publier les résultats." 
       });

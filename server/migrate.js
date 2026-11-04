@@ -152,7 +152,8 @@ export async function runMigration() {
       await client.query(`ALTER TABLE loto_users ADD COLUMN IF NOT EXISTS commission_rate NUMERIC(5,2) DEFAULT 8.00`);
       await client.query(`ALTER TABLE loto_users ADD COLUMN IF NOT EXISTS moderator_commission_rate NUMERIC(5,2) DEFAULT 2.00`);
       await client.query(`ALTER TABLE loto_tickets ADD COLUMN IF NOT EXISTS seller_name VARCHAR(255)`);
-      console.log('[MIGRATION] country, team_name, supervisor_id, commission rates on loto_users and seller_name on loto_tickets ensured.');
+      await client.query(`ALTER TABLE loto_tickets ADD COLUMN IF NOT EXISTS signature VARCHAR(255)`);
+      console.log('[MIGRATION] country, team_name, supervisor_id, commission rates, and ticket security signature ensured.');
     } catch (e) {
       console.warn('[MIGRATION] Column alter warning:', e.message);
     }

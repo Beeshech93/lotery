@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pg from 'pg';
-// TODO: Verify PostgreSQL connection handling and secure credentials
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -12,6 +12,29 @@ dotenv.config();
 try {
   dotenv.config({ path: path.join(__dirname, '.env') });
 } catch (e) {}
+
+const TICKET_HMAC_SECRET = process.env.TICKET_SIGN_SECRET || process.env.JWT_SECRET || 'loto509-tamper-proof-cryptographic-salt-2026-sec';
+
+export function generateTicketSignature(ticket) {
+  const payload = `${ticket.id}|${ticket.barcode}|${ticket.securityCode}|${ticket.drawId}|${ticket.drawDate}|${Number(ticket.totalAmount)}|${ticket.createdAt}`;
+  return crypto.createHmac('sha256', TICKET_HMAC_SECRET).update(payload).digest('hex');
+}
+
+export function verifyTicketSignature(ticket) {
+  if (!ticket || !ticket.signature) {
+    // Legacy ticket created prior to cryptographic signing
+    return true;
+  }
+  const expected = generateTicketSignature(ticket);
+  try {
+    const bufA = Buffer.from(ticket.signature, 'hex');
+    const bufB = Buffer.from(expected, 'hex');
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+  } catch (e) {
+    return false;
+  }
+}
 
 const DATA_FILE = path.join(__dirname, 'data', 'store.json');
 
@@ -834,14 +857,33 @@ class Store {
       throw new Error("Panye a vid. Tanpri ajoute omwen yon jwèt.");
     }
 
+    // Security: Anti-flood limit on plays per ticket
+    if (plays.length > 50) {
+      throw new Error("Panye a depase limit maksimòm 50 jwèt pou yon sèl tikè.");
+    }
+
+    const now = new Date();
+    const dateStr = getLocalDrawDate(draw.timeZone || 'America/New_York', now);
+
+    // Anti-fraud: prevent betting if draw results have already been entered/published
+    const existingResult = this.data.results.find(r => r.drawId === draw.id && r.drawDate === dateStr);
+    if (existingResult) {
+      throw new Error("Tiraj sa a deja fini epi gen rezilta pibliye pou li. Pari pa posib ankò.");
+    }
+
     let totalAmount = 0;
     plays.forEach(p => {
       this.validatePlay(p.gameType, p.numbers, p.amount, draw.id);
       totalAmount += Number(p.amount);
     });
 
-    const now = new Date();
-    const dateStr = getLocalDrawDate(draw.timeZone || 'America/New_York', now);
+    if (totalAmount <= 0 || isNaN(totalAmount)) {
+      throw new Error("Montan total tikè a dwe pozitif.");
+    }
+    if (totalAmount > 50000) {
+      throw new Error(`Montan maksimòm pa tikè se 50,000 ${this.data.config.currencySymbol}.`);
+    }
+
     const timeStr = now.toTimeString().split(' ')[0].substring(0, 5);
 
     const randomSuffix = `${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 89)}`;
@@ -877,6 +919,9 @@ class Store {
       paidBy: null
     };
 
+    // Banking-grade tamper-proof cryptographic signature
+    newTicket.signature = generateTicketSignature(newTicket);
+
     this.data.tickets.unshift(newTicket);
 
     // Persist to Neon PostgreSQL
@@ -887,16 +932,17 @@ class Store {
             id, barcode, security_code, draw_id, draw_name_fr, draw_name_ht,
             draw_date, draw_time, total_amount, currency, currency_symbol,
             status, plays, winnings, branch_name, pos_id, seller_id, seller_name,
-            created_at
+            created_at, signature
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
           )
         `, [
           newTicket.id, newTicket.barcode, newTicket.securityCode, newTicket.drawId,
           newTicket.drawNameFr, newTicket.drawNameHt, newTicket.drawDate, newTicket.drawTime,
           newTicket.totalAmount, newTicket.currency, newTicket.currencySymbol,
           newTicket.status, JSON.stringify(newTicket.plays), JSON.stringify(newTicket.winnings),
-          newTicket.branchName, newTicket.posId, newTicket.sellerId, newTicket.sellerName, newTicket.createdAt
+          newTicket.branchName, newTicket.posId, newTicket.sellerId, newTicket.sellerName, newTicket.createdAt,
+          newTicket.signature
         ]);
       } catch (err) {
         console.error('[POSTGRES] Failed to insert ticket:', err.message);
@@ -963,6 +1009,7 @@ class Store {
             posId: t.pos_id,
             sellerId: t.seller_id,
             sellerName: t.seller_name || t.seller_id || "Agent POS",
+            signature: t.signature || null,
             cancelledAt: t.cancelled_at,
             paidAt: t.paid_at,
             paidBy: t.paid_by,
@@ -1039,6 +1086,7 @@ class Store {
             posId: t.pos_id,
             sellerId: t.seller_id,
             sellerName: t.seller_name || t.seller_id || "Agent POS",
+            signature: t.signature || null,
             cancelledAt: t.cancelled_at,
             paidAt: t.paid_at,
             paidBy: t.paid_by,
@@ -1113,21 +1161,37 @@ class Store {
     const ticket = await this.getTicketByIdAsync(ticketId);
     if (!ticket) throw new Error("Tikè sa a pa egziste / Ticket non trouvé");
     if (ticket.status !== 'won') throw new Error("Tikè sa a pa yon tikè gayan / Ce billet n'est pas gagnant");
-    if (ticket.paidAt) throw new Error("Tikè a te deja peye / Ce billet a déjà été payé");
+    if (ticket.paidAt) throw new Error(`Tikè a te deja peye nan dat ${new Date(ticket.paidAt).toLocaleString()} pa ${ticket.paidBy || 'Caisse'}`);
 
-    ticket.status = 'paid';
-    ticket.paidAt = new Date().toISOString();
-    ticket.paidBy = cashierName;
+    // Verify cryptographic signature before payout
+    if (ticket.signature && !verifyTicketSignature(ticket)) {
+      throw new Error("ALÈT SEKRITE: Tikè sa a te modifye oswa fòje! Siyati nimerik la pa valid. Pèyman bloke!");
+    }
 
+    const paidAt = new Date().toISOString();
+    const paidBy = cashierName;
+
+    // Atomic double-spend prevention in Neon PostgreSQL
     if (this.pgPool) {
       try {
-        await this.pgPool.query(`
-          UPDATE loto_tickets SET status = 'paid', paid_at = $1, paid_by = $2 WHERE id = $3
-        `, [ticket.paidAt, ticket.paidBy, ticket.id]);
+        const updateRes = await this.pgPool.query(`
+          UPDATE loto_tickets 
+          SET status = 'paid', paid_at = $1, paid_by = $2 
+          WHERE id = $3 AND status = 'won' AND paid_at IS NULL
+        `, [paidAt, paidBy, ticket.id]);
+
+        if (updateRes.rowCount === 0) {
+          throw new Error("Erè konkirens: Tikè sa a te gentan peye an menm tan sou yon lòt tèminal!");
+        }
       } catch (err) {
+        if (err.message.includes('konkirens')) throw err;
         console.error('[POSTGRES] Failed to payout ticket:', err.message);
       }
     }
+
+    ticket.status = 'paid';
+    ticket.paidAt = paidAt;
+    ticket.paidBy = paidBy;
 
     this.saveToLocal();
     return ticket;
@@ -1921,4 +1985,6 @@ class Store {
 }
 
 export const db = new Store();
+db.generateTicketSignature = generateTicketSignature;
+db.verifyTicketSignature = verifyTicketSignature;
 
