@@ -10,7 +10,7 @@ const getClientLocalDate = () => {
   return `${y}-${m}-${day}`;
 };
 
-export default function DailyReportScreen({ config, lang, t }) {
+export default function DailyReportScreen({ config, lang, t, currentUser }) {
   const [reportDate, setReportDate] = useState(() => getClientLocalDate());
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -20,7 +20,14 @@ export default function DailyReportScreen({ config, lang, t }) {
   const fetchReport = async (dateStr) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/reports/daily?date=${dateStr}`);
+      let queryParams = `date=${dateStr}`;
+      if (currentUser?.role === 'agent') {
+        queryParams += `&sellerId=${encodeURIComponent(currentUser.username)}&posId=${encodeURIComponent(currentUser.posId || '')}`;
+      } else if (currentUser?.role === 'moderator') {
+        queryParams += `&supervisorId=${encodeURIComponent(currentUser.id)}&teamName=${encodeURIComponent(currentUser.teamName || '')}`;
+      }
+
+      const res = await fetch(`/api/reports/daily?${queryParams}`);
       const data = await res.json();
       setReportData(data);
     } catch (err) {
@@ -47,7 +54,13 @@ export default function DailyReportScreen({ config, lang, t }) {
       <div className="report-top-bar no-print">
         <div>
           <h2>{t.reportsTitle}</h2>
-          <p className="subtext">{t.todaySummary}</p>
+          <p className="subtext">
+            {currentUser?.role === 'agent' 
+              ? `Rapò Vandè: ${currentUser.name} (@${currentUser.username})` 
+              : currentUser?.role === 'moderator' 
+              ? `Rapò Ekip: ${currentUser.teamName || 'Ekip Nò'}` 
+              : t.todaySummary}
+          </p>
         </div>
         <div className="report-filter-controls">
           <input 
@@ -65,6 +78,61 @@ export default function DailyReportScreen({ config, lang, t }) {
           </button>
         </div>
       </div>
+
+      {/* Commission & Settlement Banner for Agents / Moderators */}
+      {(currentUser?.role === 'agent' || currentUser?.role === 'moderator') && (() => {
+        const isAgent = currentUser.role === 'agent';
+        const rate = isAgent ? (currentUser.commissionRate ?? 8) : (currentUser.moderatorCommissionRate ?? 2);
+        const sales = reportData?.totalSales || 0;
+        const commAmt = (sales * (rate / 100));
+        const winnings = reportData?.totalWinningAmount || 0;
+        const netToTurnIn = sales - winnings - commAmt;
+
+        return (
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.1), rgba(16, 185, 129, 0.08))',
+            border: '1px solid rgba(234, 179, 8, 0.3)',
+            borderRadius: '12px',
+            padding: '1.15rem 1.4rem',
+            marginBottom: '1.5rem',
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '1rem'
+          }}>
+            <div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#facc15', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                💵 {isAgent ? `Komisyon Vandè (${rate}%)` : `Komisyon Lidè Ekip sou Vant (${rate}%)`}
+              </div>
+              <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#4ade80', marginTop: '2px' }}>
+                {currencySymbol} {commAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <div style={{ fontSize: '0.78rem', opacity: 0.75, marginTop: '2px' }}>
+                {isAgent ? "Pousantaj ou touche sou total vant jounen an" : "Komisyon sipèvizyon sou total vant ekip la"}
+              </div>
+            </div>
+
+            <div style={{
+              background: 'rgba(0, 0, 0, 0.25)',
+              padding: '10px 16px',
+              borderRadius: '10px',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              textAlign: 'right'
+            }}>
+              <div style={{ fontSize: '0.78rem', opacity: 0.8, color: '#94a3b8' }}>
+                🏦 {isAgent ? "Lajan Nèt pou Remèt Bank / Sipèvizè:" : "Vèsman Nèt pou Direksyon Santral:"}
+              </div>
+              <div style={{ fontSize: '1.35rem', fontWeight: 800, color: netToTurnIn >= 0 ? '#38bdf8' : '#f87171', marginTop: '2px' }}>
+                {currencySymbol} {netToTurnIn.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <div style={{ fontSize: '0.72rem', opacity: 0.6 }}>
+                (Vant {sales.toFixed(2)} - Prim {winnings.toFixed(2)} - Komisyon {commAmt.toFixed(2)})
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Metrics Cards Grid */}
       <div className="metrics-cards-grid">

@@ -849,10 +849,23 @@ export default function PosScreen({
             <h4>{t.recentTickets}</h4>
           </div>
           <div className="recent-list-scroll">
-            {recentTickets?.length === 0 ? (
-              <p className="no-recent-text">{t.noRecentTickets}</p>
-            ) : (
-              recentTickets?.slice(0, 5).map(ticket => (
+            {(() => {
+              const displayTickets = (recentTickets || []).filter(ticket => {
+                if (currentUser?.role === 'agent') {
+                  return (
+                    ticket.sellerId === currentUser.username ||
+                    ticket.posId === currentUser.posId ||
+                    ticket.sellerName === currentUser.name
+                  );
+                }
+                return true;
+              });
+
+              if (displayTickets.length === 0) {
+                return <p className="no-recent-text">{t.noRecentTickets}</p>;
+              }
+
+              return displayTickets.slice(0, 5).map(ticket => (
                 <div key={ticket.id} className={`recent-ticket-item status-${ticket.status}`}>
                   <div className="recent-item-meta">
                     <span className="recent-id mono-text">{ticket.id}</span>
@@ -895,8 +908,8 @@ export default function PosScreen({
                     )}
                   </div>
                 </div>
-              ))
-            )}
+              ));
+            })()}
           </div>
         </div>
       </div>

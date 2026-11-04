@@ -4,7 +4,7 @@ import {
   Store, Clock, AlertTriangle, CheckCircle, 
   RefreshCw, Plus, Database, Cloud, FileText, Search,
   Power, Printer, ExternalLink,
-  Ban, Trash2, Lock, Eye, EyeOff, X, Copy, Check, Key
+  Ban, Trash2, Lock, Eye, EyeOff, X, Copy, Check, Key, Percent
 } from 'lucide-react';
 import { sounds } from '../soundEffects';
 
@@ -29,6 +29,12 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated,
   const [pinUpdating, setPinUpdating] = useState(false);
   const [pinSuccessMsg, setPinSuccessMsg] = useState('');
   const [pinErrorMsg, setPinErrorMsg] = useState('');
+  const [commissionEditTarget, setCommissionEditTarget] = useState(null);
+  const [newCommissionRateInput, setNewCommissionRateInput] = useState('');
+  const [newModCommissionRateInput, setNewModCommissionRateInput] = useState('');
+  const [commissionUpdating, setCommissionUpdating] = useState(false);
+  const [commissionSuccessMsg, setCommissionSuccessMsg] = useState('');
+  const [commissionErrorMsg, setCommissionErrorMsg] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [showAddAgent, setShowAddAgent] = useState(false);
   const [showAddBlock, setShowAddBlock] = useState(false);
@@ -41,7 +47,9 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated,
     role: 'agent',
     teamName: isModerator ? (currentUser?.teamName || 'Ekip Nò') : '',
     supervisorId: isModerator ? currentUser?.id : '',
-    country: 'HT'
+    country: 'HT',
+    commissionRate: 8,
+    moderatorCommissionRate: 2
   });
   const [newBlock, setNewBlock] = useState({
     drawId: 'all',
@@ -145,7 +153,9 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated,
           ? currentUser?.id 
           : (newAgent.supervisorId || null),
         posId: newAgent.posId || `POS-${Math.floor(100 + Math.random() * 900)}`,
-        branchName: newAgent.branchName || (lang === 'ht' ? 'Sikisal LOTO509' : 'Succursale LOTO509')
+        branchName: newAgent.branchName || (lang === 'ht' ? 'Sikisal LOTO509' : 'Succursale LOTO509'),
+        commissionRate: Number(newAgent.commissionRate) || 8,
+        moderatorCommissionRate: Number(newAgent.moderatorCommissionRate) || 2
       };
 
       const res = await fetch('/api/auth/agents', {
@@ -167,12 +177,74 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated,
         role: 'agent',
         teamName: isModerator ? (currentUser?.teamName || 'Ekip Nò') : '',
         supervisorId: isModerator ? currentUser?.id : '',
-        country: 'HT' 
+        country: 'HT',
+        commissionRate: 8,
+        moderatorCommissionRate: 2
       });
       fetchDashboardData();
     } catch (err) {
       sounds.error();
       alert(err.message);
+    }
+  };
+
+  // Update Commission handler (Admin only)
+  const handleUpdateCommission = async (e) => {
+    if (e) e.preventDefault();
+    if (!commissionEditTarget) return;
+
+    const rate = parseFloat(newCommissionRateInput);
+    const modRate = parseFloat(newModCommissionRateInput);
+
+    if (isNaN(rate) || rate < 0 || rate > 100) {
+      setCommissionErrorMsg(lang === 'ht' ? 'Pousantaj dwe ant 0 ak 100%' : 'Le pourcentage doit être compris entre 0 et 100%');
+      return;
+    }
+
+    setCommissionUpdating(true);
+    setCommissionErrorMsg('');
+    try {
+      const res = await fetch(`/api/auth/agents/${commissionEditTarget.id}/commission`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          commissionRate: rate,
+          moderatorCommissionRate: !isNaN(modRate) ? modRate : undefined,
+          requesterRole: currentUser?.role
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Erè pandan modifikasyon komisyon');
+      }
+
+      sounds.tap();
+      setCommissionSuccessMsg(lang === 'ht' ? `✅ Komisyon mete ajou avèk siksè pou ${commissionEditTarget.name}!` : `✅ Commission mise à jour avec succès pour ${commissionEditTarget.name}!`);
+
+      // Update agents list in local state
+      setAgents(prev => prev.map(a => a.id === commissionEditTarget.id ? { 
+        ...a, 
+        commissionRate: data.agent.commissionRate, 
+        moderatorCommissionRate: data.agent.moderatorCommissionRate 
+      } : a));
+
+      // If currently inspecting this user in modal, update that as well
+      setSelectedUserModal(prev => prev && prev.id === commissionEditTarget.id ? { 
+        ...prev, 
+        commissionRate: data.agent.commissionRate, 
+        moderatorCommissionRate: data.agent.moderatorCommissionRate 
+      } : prev);
+
+      setTimeout(() => {
+        setCommissionEditTarget(null);
+        setCommissionSuccessMsg('');
+      }, 1400);
+    } catch (err) {
+      sounds.error();
+      setCommissionErrorMsg(err.message);
+    } finally {
+      setCommissionUpdating(false);
     }
   };
 
@@ -639,6 +711,26 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated,
                   <option value="MX">🇲🇽 México</option>
                   <option value="US">🇺🇸 Estados Unidos</option>
                 </select>
+                <input 
+                  type="number" 
+                  step="0.5"
+                  min="0"
+                  max="100"
+                  placeholder={lang === 'ht' ? "Komisyon Vant (%) eg. 8" : "Commission Vente (%) eg. 8"} 
+                  value={newAgent.commissionRate} 
+                  onChange={e => setNewAgent({...newAgent, commissionRate: e.target.value})}
+                />
+                {!isModerator && (
+                  <input 
+                    type="number" 
+                    step="0.5"
+                    min="0"
+                    max="100"
+                    placeholder={lang === 'ht' ? "Komisyon Ekip (%) eg. 2" : "Commission Équipe (%) eg. 2"} 
+                    value={newAgent.moderatorCommissionRate} 
+                    onChange={e => setNewAgent({...newAgent, moderatorCommissionRate: e.target.value})}
+                  />
+                )}
               </div>
               <div className="form-actions">
                 <button type="submit" className="btn-confirm-add">
@@ -661,6 +753,7 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated,
                   <th>{t.terminalId || "Tèminal POS"}</th>
                   <th>{t.branch || "Sikisal"}</th>
                   <th>{t.todaySales || "Vant Jodi a"}</th>
+                  <th>{lang === 'ht' ? "Komisyon" : "Commission"}</th>
                   <th>{t.status || "Eta"}</th>
                   <th>{t.action || "Aksyon"}</th>
                 </tr>
@@ -703,6 +796,29 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated,
                       </strong>
                     </td>
                     <td>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        {a.role === 'moderator' ? (
+                          <>
+                            <span style={{ fontWeight: 700, color: '#c084fc', fontSize: '0.82rem' }}>
+                              🛡️ Ekip: {a.moderatorCommissionRate ?? 2}%
+                            </span>
+                            <span style={{ fontSize: '0.72rem', opacity: 0.75 }}>
+                              👤 Vant: {a.commissionRate ?? 8}%
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{ fontWeight: 700, color: '#38bdf8', fontSize: '0.85rem' }}>
+                              {a.commissionRate ?? 8}%
+                            </span>
+                            <span style={{ fontSize: '0.72rem', opacity: 0.75 }}>
+                              = {currencySymbol} {(((a.todaySales || 0) * (a.commissionRate ?? 8)) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                    <td>
                       <span className={`status-pill ${a.enabled ? 'active' : 'disabled'}`}>
                         {a.enabled ? (t.active || "Aktif") : (t.disabled || "Bloke")}
                       </span>
@@ -730,6 +846,35 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated,
                           <Eye size={13} />
                           <span>{lang === 'ht' ? "Pwofil & Vant" : "Profil & Ventes"}</span>
                         </button>
+                        {!isModerator && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCommissionEditTarget(a);
+                              setNewCommissionRateInput(String(a.commissionRate ?? 8));
+                              setNewModCommissionRateInput(String(a.moderatorCommissionRate ?? 2));
+                              setCommissionErrorMsg('');
+                              setCommissionSuccessMsg('');
+                            }}
+                            style={{
+                              padding: '6px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid rgba(56, 189, 248, 0.4)',
+                              background: 'rgba(56, 189, 248, 0.15)',
+                              color: '#38bdf8',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontSize: '11px'
+                            }}
+                            title={lang === 'ht' ? "Ajiste Komisyon" : "Ajuster Commission"}
+                          >
+                            <Percent size={13} />
+                            <span>% Komisyon</span>
+                          </button>
+                        )}
                         {!isModerator && (
                           <button
                             type="button"
@@ -1554,6 +1699,15 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated,
           (a.role === 'agent' && a.teamName === selectedUserModal.teamName && a.id !== selectedUserModal.id)
         );
 
+        const userCommRate = Number(selectedUserModal.commissionRate ?? 8);
+        const userModRate = Number(selectedUserModal.moderatorCommissionRate ?? 2);
+        const personalCommission = totalUserSales * (userCommRate / 100);
+
+        const teamSales = supervisedAgents.reduce((sum, a) => sum + (Number(a.todaySales) || 0), 0);
+        const teamCommission = selectedUserModal.role === 'moderator' ? (teamSales * (userModRate / 100)) : 0;
+        const totalCommissionEarned = personalCommission + teamCommission;
+        const netRemitToBank = Math.max(0, totalUserSales - totalUserPayouts - personalCommission);
+
         const filteredUserTickets = userTickets.filter(t => {
           if (userTxFilter !== 'all') {
             if (userTxFilter === 'won') {
@@ -1856,6 +2010,86 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated,
                   </div>
                   <div style={{ fontSize: '0.72rem', opacity: 0.6, marginTop: '2px' }}>
                     {lang === 'ht' ? "Sesyon aktif" : "Session active"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Commission & Bank Settlement Summary Card */}
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(59, 130, 246, 0.08))',
+                border: '1px solid rgba(6, 182, 212, 0.25)',
+                borderRadius: '12px',
+                padding: '1rem',
+                marginBottom: '1.25rem'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '0.75rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Percent size={18} color="#38bdf8" />
+                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#38bdf8' }}>
+                      {lang === 'ht' ? "Jesyon Komisyon & Vèsman Bank" : "Gestion Commission & Versement Banque"}
+                    </span>
+                  </div>
+                  {!isModerator && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCommissionEditTarget(selectedUserModal);
+                        setNewCommissionRateInput(String(selectedUserModal.commissionRate ?? 8));
+                        setNewModCommissionRateInput(String(selectedUserModal.moderatorCommissionRate ?? 2));
+                        setCommissionErrorMsg('');
+                        setCommissionSuccessMsg('');
+                      }}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid rgba(56, 189, 248, 0.4)',
+                        background: 'rgba(56, 189, 248, 0.2)',
+                        color: '#38bdf8',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      <Percent size={12} />
+                      <span>{lang === 'ht' ? "Ajiste Pousantaj" : "Modifier Taux"}</span>
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+                  <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>
+                      {lang === 'ht' ? "Taux Komisyon" : "Taux Commission"}
+                    </div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#38bdf8' }}>
+                      {selectedUserModal.role === 'moderator' 
+                        ? `${userModRate}% (Ekip) • ${userCommRate}% (Vant)`
+                        : `${userCommRate}%`}
+                    </div>
+                  </div>
+
+                  <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>
+                      {lang === 'ht' ? "Total Komisyon Touche" : "Commission Gagnée"}
+                    </div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#4ade80' }}>
+                      {currencySymbol} {totalCommissionEarned.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+
+                  <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>
+                      {lang === 'ht' ? "Vèsman Nèt nan Bank" : "Versement Net Banque"}
+                    </div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#facc15' }}>
+                      {currencySymbol} {netRemitToBank.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                    <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '2px' }}>
+                      Vant - Prim - Komisyon
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2351,6 +2585,305 @@ export default function AdminDashboard({ config, draws, lang, t, onDrawsUpdated,
                     <>
                       <Check size={16} />
                       <span>{lang === 'ht' ? "Anrejistre PIN" : "Enregistrer PIN"}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Configure Commission Rates Modal */}
+      {commissionEditTarget && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '1rem'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !commissionUpdating) {
+              setCommissionEditTarget(null);
+            }
+          }}
+        >
+          <div 
+            style={{
+              background: 'var(--bg-card, #1a202c)',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
+              borderRadius: '16px',
+              maxWidth: '460px',
+              width: '100%',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              padding: '1.5rem',
+              color: 'var(--text-primary)'
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(56, 189, 248, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Percent size={20} color="#38bdf8" />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700 }}>
+                    {lang === 'ht' ? "Konfigirasyon Komisyon" : "Configuration Commission"}
+                  </h3>
+                  <div style={{ fontSize: '0.8rem', opacity: 0.7, marginTop: '2px' }}>
+                    {commissionEditTarget.name} (@{commissionEditTarget.username})
+                  </div>
+                </div>
+              </div>
+              <button 
+                onClick={() => { if (!commissionUpdating) setCommissionEditTarget(null); }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  borderRadius: '6px'
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Target Info Pill */}
+            <div style={{
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              marginBottom: '1.25rem',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div>
+                <span style={{ opacity: 0.6, fontSize: '0.75rem', display: 'block' }}>
+                  {lang === 'ht' ? "Wòl Itilizatè:" : "Rôle Utilisateur:"}
+                </span>
+                <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                  {commissionEditTarget.role === 'moderator' ? '🛡️ Moderatè / Sipèvizè' : '👤 Vandè / Ajan POS'}
+                </span>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ opacity: 0.6, fontSize: '0.75rem', display: 'block' }}>
+                  {lang === 'ht' ? "Tèminal:" : "Terminal:"}
+                </span>
+                <span className="mono" style={{ fontWeight: 700, color: '#38bdf8' }}>
+                  {commissionEditTarget.posId || 'N/A'}
+                </span>
+              </div>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleUpdateCommission}>
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: '#38bdf8' }}>
+                  {commissionEditTarget.role === 'moderator' 
+                    ? (lang === 'ht' ? "Pousantaj sou Vant Pèsonèl (%)" : "Pourcentage Vente Directe (%)")
+                    : (lang === 'ht' ? "Pousantaj Komisyon sou Vant (%)" : "Pourcentage Commission (%)")}
+                </label>
+                <input 
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="100"
+                  value={newCommissionRateInput}
+                  onChange={(e) => setNewCommissionRateInput(e.target.value)}
+                  placeholder="8.0"
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(56, 189, 248, 0.4)',
+                    background: 'rgba(0,0,0,0.3)',
+                    color: '#fff',
+                    fontSize: '1.25rem',
+                    textAlign: 'center',
+                    fontFamily: 'monospace',
+                    fontWeight: 700
+                  }}
+                />
+
+                {/* Quick Presets */}
+                <div style={{ display: 'flex', gap: '6px', marginTop: '8px', justifyContent: 'center' }}>
+                  {[5, 7, 8, 10, 12, 15].map(val => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setNewCommissionRateInput(String(val))}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: Number(newCommissionRateInput) === val ? 'rgba(56, 189, 248, 0.3)' : 'rgba(255,255,255,0.05)',
+                        color: Number(newCommissionRateInput) === val ? '#38bdf8' : 'rgba(255,255,255,0.7)',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer',
+                        fontWeight: 600
+                      }}
+                    >
+                      {val}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {commissionEditTarget.role === 'moderator' && (
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: '#c084fc' }}>
+                    {lang === 'ht' ? "Pousantaj Sipèvizyon sou Tout Ekip la (%)" : "Commission Supervision d'Équipe (%)"}
+                  </label>
+                  <input 
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={newModCommissionRateInput}
+                    onChange={(e) => setNewModCommissionRateInput(e.target.value)}
+                    placeholder="2.0"
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(168, 85, 247, 0.4)',
+                      background: 'rgba(0,0,0,0.3)',
+                      color: '#fff',
+                      fontSize: '1.25rem',
+                      textAlign: 'center',
+                      fontFamily: 'monospace',
+                      fontWeight: 700
+                    }}
+                  />
+                  {/* Mod Presets */}
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '8px', justifyContent: 'center' }}>
+                    {[1, 1.5, 2, 2.5, 3, 5].map(val => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setNewModCommissionRateInput(String(val))}
+                        style={{
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          background: Number(newModCommissionRateInput) === val ? 'rgba(168, 85, 247, 0.3)' : 'rgba(255,255,255,0.05)',
+                          color: Number(newModCommissionRateInput) === val ? '#c084fc' : 'rgba(255,255,255,0.7)',
+                          fontSize: '0.75rem',
+                          cursor: 'pointer',
+                          fontWeight: 600
+                        }}
+                      >
+                        {val}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Simulation Example */}
+              <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: '8px', marginBottom: '1.25rem', fontSize: '0.8rem', border: '1px dashed rgba(255,255,255,0.15)' }}>
+                <span style={{ opacity: 0.7 }}>💡 {lang === 'ht' ? "Egzanp kalkil sou 1,000 G:" : "Exemple de calcul sur 1,000 G:"} </span>
+                <strong style={{ color: '#4ade80' }}>
+                  {currencySymbol} {((1000 * (Number(newCommissionRateInput) || 0)) / 100).toFixed(2)} {lang === 'ht' ? "komisyon" : "commission"}
+                </strong>
+                {commissionEditTarget.role === 'moderator' && (
+                  <div style={{ marginTop: '4px', opacity: 0.8 }}>
+                    🛡️ Ekip (10,000 G vant) = <strong style={{ color: '#c084fc' }}>{currencySymbol} {((10000 * (Number(newModCommissionRateInput) || 0)) / 100).toFixed(2)}</strong>
+                  </div>
+                )}
+              </div>
+
+              {/* Error / Success messages */}
+              {commissionErrorMsg && (
+                <div style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  color: '#ef4444',
+                  fontSize: '0.82rem',
+                  marginBottom: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <AlertTriangle size={15} />
+                  <span>{commissionErrorMsg}</span>
+                </div>
+              )}
+
+              {commissionSuccessMsg && (
+                <div style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  background: 'rgba(34, 197, 94, 0.15)',
+                  border: '1px solid rgba(34, 197, 94, 0.3)',
+                  color: '#4ade80',
+                  fontSize: '0.82rem',
+                  marginBottom: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <CheckCircle size={15} />
+                  <span>{commissionSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  disabled={commissionUpdating}
+                  onClick={() => setCommissionEditTarget(null)}
+                  style={{
+                    padding: '10px 16px',
+                    borderRadius: '8px',
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    color: 'var(--text-primary)',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {lang === 'ht' ? "Anile" : "Annuler"}
+                </button>
+                <button
+                  type="submit"
+                  disabled={commissionUpdating || !newCommissionRateInput}
+                  style={{
+                    padding: '10px 18px',
+                    borderRadius: '8px',
+                    background: 'linear-gradient(135deg, #0284c7, #0369a1)',
+                    border: 'none',
+                    color: '#fff',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {commissionUpdating ? (
+                    <span>{lang === 'ht' ? "Ap anrejistre..." : "Enregistrement..."}</span>
+                  ) : (
+                    <>
+                      <Check size={16} />
+                      <span>{lang === 'ht' ? "Sove Komisyon" : "Sauvegarder"}</span>
                     </>
                   )}
                 </button>

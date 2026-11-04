@@ -91,6 +91,19 @@ app.post('/api/auth/agents/:id/pin', async (req, res) => {
   }
 });
 
+app.post('/api/auth/agents/:id/commission', async (req, res) => {
+  try {
+    const { commissionRate, moderatorCommissionRate, requesterRole } = req.body;
+    if (requesterRole && requesterRole !== 'admin') {
+      return res.status(403).json({ error: 'Sèl Admin Santral ki gen dwa modifye pousantaj komisyon / Seul l\'Admin peut modifier les commissions' });
+    }
+    const result = await db.updateAgentCommission(req.params.id, { commissionRate, moderatorCommissionRate });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Blocked Numbers & Risk Management Endpoints
 app.get('/api/blocked-numbers', (req, res) => {
   try {
@@ -209,9 +222,11 @@ app.post('/api/draws/:id/override', async (req, res) => {
 // Tickets Endpoints
 app.get('/api/tickets', async (req, res) => {
   try {
-    const { drawId, status, date, supervisorId, teamName, sellerId } = req.query;
+    const { drawId, status, date, supervisorId, teamName, sellerId, posId } = req.query;
     let sellerIds = null;
-    if (supervisorId || teamName) {
+    if (sellerId || posId) {
+      sellerIds = [sellerId, posId].filter(Boolean);
+    } else if (supervisorId || teamName) {
       const agents = await db.getAgents({ supervisorId, teamName });
       sellerIds = agents.flatMap(a => [a.username, a.posId, a.name]);
     }
@@ -313,13 +328,15 @@ app.post('/api/results', async (req, res) => {
 // Daily Report
 app.get('/api/reports/daily', async (req, res) => {
   try {
-    const { date, supervisorId, teamName } = req.query;
+    const { date, supervisorId, teamName, sellerId, posId } = req.query;
     let sellerIds = null;
-    if (supervisorId || teamName) {
+    if (sellerId || posId) {
+      sellerIds = [sellerId, posId].filter(Boolean);
+    } else if (supervisorId || teamName) {
       const agents = await db.getAgents({ supervisorId, teamName });
       sellerIds = agents.flatMap(a => [a.username, a.posId, a.name]);
     }
-    res.json(db.getDailyReport(date, { sellerIds }));
+    res.json(db.getDailyReport(date, { sellerId, posId, sellerIds }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -87,10 +87,17 @@ export default function App() {
   const loadInitialData = async () => {
     try {
       const tzParam = currentUser?.timezone ? `?agentTz=${encodeURIComponent(currentUser.timezone)}` : '';
+      let ticketsParam = '';
+      if (currentUser?.role === 'agent') {
+        ticketsParam = `?sellerId=${encodeURIComponent(currentUser.username)}&posId=${encodeURIComponent(currentUser.posId || '')}`;
+      } else if (currentUser?.role === 'moderator') {
+        ticketsParam = `?supervisorId=${encodeURIComponent(currentUser.id)}&teamName=${encodeURIComponent(currentUser.teamName || '')}`;
+      }
+
       const [configRes, drawsRes, ticketsRes] = await Promise.all([
         fetch('/api/config'),
         fetch(`/api/draws${tzParam}`),
-        fetch('/api/tickets')
+        fetch(`/api/tickets${ticketsParam}`)
       ]);
 
       const configData = await configRes.json();
@@ -386,6 +393,7 @@ export default function App() {
             config={config}
             lang={lang}
             t={t}
+            currentUser={currentUser}
           />
         )}
 

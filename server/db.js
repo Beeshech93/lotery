@@ -43,10 +43,10 @@ export function getLocalDrawDate(timeZone = 'America/New_York', date = new Date(
 }
 
 const DEFAULT_USERS = [
-  { id: 'usr_admin', username: 'admin', pin: '5090', password: 'admin509', name: 'Administrateur Central LOTO509', role: 'admin', posId: 'POS-ADMIN-00', branchName: 'Direksyon Jeneral LOTO509', country: 'HT', teamName: 'Direksyon Santral', supervisorId: null, enabled: true },
-  { id: 'usr_mod_01', username: 'mod1', pin: '4040', password: 'mod509', name: 'Alain Dessalines (Lidè Ekip Nò)', role: 'moderator', posId: 'POS-MOD-01', branchName: 'Ekip Nò & Dèlma', country: 'HT', teamName: 'Ekip Nò', supervisorId: 'usr_admin', enabled: true },
-  { id: 'usr_agent_01', username: 'agent1', pin: '1234', password: '1234', name: 'Jean-Baptiste Pierre (Petyonvil)', role: 'agent', posId: 'POS-SUNMI-01', branchName: 'Santral Petyonvil / Pétion-Ville', country: 'HT', teamName: 'Ekip Santral', supervisorId: 'usr_admin', enabled: true },
-  { id: 'usr_agent_02', username: 'agent2', pin: '5678', password: '5678', name: 'Marie-Claire Joseph (Dèlma)', role: 'agent', posId: 'POS-SUNMI-02', branchName: 'Sikisal Dèlma 33 / Delmas', country: 'HT', teamName: 'Ekip Nò', supervisorId: 'usr_mod_01', enabled: true }
+  { id: 'usr_admin', username: 'admin', pin: '5090', password: 'admin509', name: 'Administrateur Central LOTO509', role: 'admin', posId: 'POS-ADMIN-00', branchName: 'Direksyon Jeneral LOTO509', country: 'HT', teamName: 'Direksyon Santral', supervisorId: null, enabled: true, commissionRate: 8.0, moderatorCommissionRate: 2.0 },
+  { id: 'usr_mod_01', username: 'mod1', pin: '4040', password: 'mod509', name: 'Alain Dessalines (Lidè Ekip Nò)', role: 'moderator', posId: 'POS-MOD-01', branchName: 'Ekip Nò & Dèlma', country: 'HT', teamName: 'Ekip Nò', supervisorId: 'usr_admin', enabled: true, commissionRate: 8.0, moderatorCommissionRate: 2.0 },
+  { id: 'usr_agent_01', username: 'agent1', pin: '1234', password: '1234', name: 'Jean-Baptiste Pierre (Petyonvil)', role: 'agent', posId: 'POS-SUNMI-01', branchName: 'Santral Petyonvil / Pétion-Ville', country: 'HT', teamName: 'Ekip Santral', supervisorId: 'usr_admin', enabled: true, commissionRate: 8.0, moderatorCommissionRate: 2.0 },
+  { id: 'usr_agent_02', username: 'agent2', pin: '5678', password: '5678', name: 'Marie-Claire Joseph (Dèlma)', role: 'agent', posId: 'POS-SUNMI-02', branchName: 'Sikisal Dèlma 33 / Delmas', country: 'HT', teamName: 'Ekip Nò', supervisorId: 'usr_mod_01', enabled: true, commissionRate: 8.0, moderatorCommissionRate: 2.0 }
 ];
 
 // Ensure local data folder exists as backup/cache
@@ -1270,11 +1270,16 @@ class Store {
     const today = dateStr || getLocalDrawDate();
     let tickets = this.data.tickets.filter(t => t.drawDate === today);
 
-    if (filter && Array.isArray(filter.sellerIds) && filter.sellerIds.length > 0) {
+    const allowedSellers = [];
+    if (filter.sellerId) allowedSellers.push(filter.sellerId);
+    if (filter.posId) allowedSellers.push(filter.posId);
+    if (Array.isArray(filter.sellerIds)) allowedSellers.push(...filter.sellerIds);
+
+    if (allowedSellers.length > 0) {
       tickets = tickets.filter(t => 
-        filter.sellerIds.includes(t.sellerId) || 
-        filter.sellerIds.includes(t.posId) ||
-        filter.sellerIds.includes(t.sellerName)
+        allowedSellers.includes(t.sellerId) || 
+        allowedSellers.includes(t.posId) ||
+        allowedSellers.includes(t.sellerName)
       );
     }
 
@@ -1400,7 +1405,9 @@ class Store {
             country: country,
             timezone: tzInfo.tz,
             countryFlag: tzInfo.flag,
-            countryLabel: tzInfo.label
+            countryLabel: tzInfo.label,
+            commissionRate: user.commission_rate != null ? Number(user.commission_rate) : (user.role === 'moderator' ? 2.0 : 8.0),
+            moderatorCommissionRate: user.moderator_commission_rate != null ? Number(user.moderator_commission_rate) : 2.0
           };
         }
       } catch (err) {
@@ -1451,7 +1458,9 @@ class Store {
         country: country,
         timezone: tzInfo.tz,
         countryFlag: tzInfo.flag,
-        countryLabel: tzInfo.label
+        countryLabel: tzInfo.label,
+        commissionRate: matched.commissionRate != null ? Number(matched.commissionRate) : (matched.role === 'moderator' ? 2.0 : 8.0),
+        moderatorCommissionRate: matched.moderatorCommissionRate != null ? Number(matched.moderatorCommissionRate) : 2.0
       };
     }
 
@@ -1464,7 +1473,8 @@ class Store {
       try {
         const res = await this.pgPool.query(`
           SELECT u.id, u.username, u.pin, u.name, u.role, u.pos_id, u.branch_name, 
-                 u.country, u.team_name, u.supervisor_id, u.enabled, u.last_login, u.created_at,
+                 u.country, u.team_name, u.supervisor_id, u.commission_rate, u.moderator_commission_rate,
+                 u.enabled, u.last_login, u.created_at,
                  s.name as supervisor_name
           FROM loto_users u
           LEFT JOIN loto_users s ON u.supervisor_id = s.id
@@ -1487,6 +1497,8 @@ class Store {
             teamName: u.team_name || (u.role === 'admin' ? 'Direksyon Santral' : 'Ekip Prensipal'),
             supervisorId: u.supervisor_id,
             supervisorName: u.supervisor_name || (u.role === 'admin' ? 'Santral' : null),
+            commissionRate: u.commission_rate != null ? Number(u.commission_rate) : (u.role === 'moderator' ? 2.0 : 8.0),
+            moderatorCommissionRate: u.moderator_commission_rate != null ? Number(u.moderator_commission_rate) : 2.0,
             timezone: tzInfo.tz,
             countryFlag: tzInfo.flag,
             countryLabel: tzInfo.label,
@@ -1517,6 +1529,8 @@ class Store {
           teamName: u.teamName || (u.role === 'admin' ? 'Direksyon Santral' : 'Ekip Prensipal'),
           supervisorId: u.supervisorId,
           supervisorName: supervisor?.name || (u.role === 'admin' ? 'Santral' : null),
+          commissionRate: u.commissionRate != null ? Number(u.commissionRate) : (u.role === 'moderator' ? 2.0 : 8.0),
+          moderatorCommissionRate: u.moderatorCommissionRate != null ? Number(u.moderatorCommissionRate) : 2.0,
           timezone: tzInfo.tz,
           countryFlag: tzInfo.flag,
           countryLabel: tzInfo.label,
@@ -1550,19 +1564,21 @@ class Store {
     });
   }
 
-  async createAgent({ username, pin, password, name, posId, branchName, role = 'agent', country = 'HT', teamName = null, supervisorId = null }) {
+  async createAgent({ username, pin, password, name, posId, branchName, role = 'agent', country = 'HT', teamName = null, supervisorId = null, commissionRate = 8.0, moderatorCommissionRate = 2.0 }) {
     const id = `usr_${Date.now()}`;
     const cleanUser = String(username).toLowerCase().trim();
     const validCountry = COUNTRY_TIMEZONES[country] ? country : 'HT';
     const cleanRole = ['admin', 'moderator', 'agent'].includes(role) ? role : 'agent';
     const effectiveTeam = teamName?.trim() || (cleanRole === 'moderator' ? `Ekip ${name.split(' ')[0]}` : 'Ekip Prensipal');
+    const commRate = Number(commissionRate || 8.0);
+    const modCommRate = Number(moderatorCommissionRate || 2.0);
 
     if (this.pgPool) {
       try {
         await this.pgPool.query(`
-          INSERT INTO loto_users (id, username, pin, password, name, role, pos_id, branch_name, country, team_name, supervisor_id)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        `, [id, cleanUser, String(pin), String(password || pin), name, cleanRole, posId, branchName, validCountry, effectiveTeam, supervisorId]);
+          INSERT INTO loto_users (id, username, pin, password, name, role, pos_id, branch_name, country, team_name, supervisor_id, commission_rate, moderator_commission_rate)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        `, [id, cleanUser, String(pin), String(password || pin), name, cleanRole, posId, branchName, validCountry, effectiveTeam, supervisorId, commRate, modCommRate]);
       } catch (err) {
         console.error('[POSTGRES] createAgent error:', err.message);
         throw err;
@@ -1581,6 +1597,8 @@ class Store {
       country: validCountry, 
       teamName: effectiveTeam,
       supervisorId,
+      commissionRate: commRate,
+      moderatorCommissionRate: modCommRate,
       timezone: tzInfo.tz, 
       countryFlag: tzInfo.flag, 
       countryLabel: tzInfo.label, 
@@ -1632,6 +1650,55 @@ class Store {
       u.pin = cleanPin;
       u.password = cleanPin;
       return { success: true, user: u };
+    }
+
+    throw new Error('Itilizatè pa jwenn / Utilisateur non trouvé');
+  }
+
+  async updateAgentCommission(userId, { commissionRate, moderatorCommissionRate }) {
+    const cleanComm = commissionRate != null ? Math.max(0, Math.min(100, Number(commissionRate))) : null;
+    const cleanModComm = moderatorCommissionRate != null ? Math.max(0, Math.min(100, Number(moderatorCommissionRate))) : null;
+
+    if (this.pgPool) {
+      try {
+        const res = await this.pgPool.query(`
+          UPDATE loto_users 
+          SET 
+            commission_rate = COALESCE($1, commission_rate),
+            moderator_commission_rate = COALESCE($2, moderator_commission_rate)
+          WHERE id = $3 OR username = $3
+          RETURNING id, username, name, role, commission_rate, moderator_commission_rate
+        `, [cleanComm, cleanModComm, userId]);
+        if (res.rows.length === 0) {
+          throw new Error('Itilizatè pa jwenn nan baz done a / Utilisateur non trouvé');
+        }
+        return { 
+          success: true, 
+          user: {
+            ...res.rows[0],
+            commissionRate: Number(res.rows[0].commission_rate),
+            moderatorCommissionRate: Number(res.rows[0].moderator_commission_rate)
+          } 
+        };
+      } catch (err) {
+        console.error('[POSTGRES] updateAgentCommission error:', err.message);
+        throw err;
+      }
+    }
+
+    const u = DEFAULT_USERS.find(x => x.id === userId || x.username === userId);
+    if (u) {
+      if (cleanComm != null) u.commissionRate = cleanComm;
+      if (cleanModComm != null) u.moderatorCommissionRate = cleanModComm;
+      return { 
+        success: true, 
+        user: { 
+          id: u.id, 
+          username: u.username, 
+          commissionRate: u.commissionRate, 
+          moderatorCommissionRate: u.moderatorCommissionRate 
+        } 
+      };
     }
 
     throw new Error('Itilizatè pa jwenn / Utilisateur non trouvé');
