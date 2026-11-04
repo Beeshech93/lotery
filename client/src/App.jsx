@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Ticket, CheckSquare, Trophy, BarChart3, Settings, 
-  Globe, Volume2, VolumeX, Shield, Clock, Sun, Moon,
-  ShieldCheck, LogOut, User, Store
+  Globe, Sun, Moon, ShieldCheck, LogOut, Users
 } from 'lucide-react';
 import { translations } from './i18n';
 import { sounds } from './soundEffects';
@@ -30,7 +29,6 @@ export default function App() {
   // Language: 'ht' (Kreyòl Ayisyen) or 'fr' (Français)
   const [lang, setLang] = useState(initialLang);
   const [activeTab, setActiveTab] = useState(initialTab); // 'pos', 'admin', 'verify', 'results', 'reports', 'settings'
-  const [soundEnabled, setSoundEnabled] = useState(true);
 
   // Authenticated user state
   const [currentUser, setCurrentUser] = useState(() => {
@@ -92,7 +90,7 @@ export default function App() {
       const [configRes, drawsRes, ticketsRes] = await Promise.all([
         fetch('/api/config'),
         fetch(`/api/draws${tzParam}`),
-        fetch('/api/tickets?status=active')
+        fetch('/api/tickets')
       ]);
 
       const configData = await configRes.json();
@@ -142,10 +140,12 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Safeguard: Ensure agents/cashiers cannot access admin or settings tab
+  // Safeguard: Ensure agents cannot access admin/moderator tab, and only admin can access settings
   useEffect(() => {
-    if (currentUser && currentUser.role !== 'admin') {
-      if (activeTab === 'settings' || activeTab === 'admin') {
+    if (currentUser) {
+      if (activeTab === 'settings' && currentUser.role !== 'admin') {
+        setActiveTab('pos');
+      } else if (activeTab === 'admin' && currentUser.role !== 'admin' && currentUser.role !== 'moderator') {
         setActiveTab('pos');
       }
     }
@@ -202,6 +202,7 @@ export default function App() {
         lang={lang}
         t={t}
         theme={theme}
+        config={config}
         onToggleTheme={toggleTheme}
         onToggleLang={toggleLanguage}
         onLoginSuccess={handleLoginSuccess}
@@ -225,14 +226,14 @@ export default function App() {
 
         {/* Tab Links */}
         <nav className="navbar-tabs">
-          {/* Admin Central Tab (Exclusive to Admin Role or accessible by admin) */}
-          {currentUser.role === 'admin' && (
+          {/* Admin Central or Team Supervision Tab */}
+          {(currentUser.role === 'admin' || currentUser.role === 'moderator') && (
             <button 
               className={`nav-tab-btn admin-tab ${activeTab === 'admin' ? 'active' : ''}`}
               onClick={() => { sounds.tap(); setActiveTab('admin'); }}
             >
-              <ShieldCheck size={18} />
-              <span>{t.navAdmin || "Admin Santral"}</span>
+              {currentUser.role === 'admin' ? <ShieldCheck size={18} /> : <Users size={18} />}
+              <span>{currentUser.role === 'admin' ? (t.navAdmin || "Admin Santral") : (t.navModerator || "Sipèvizyon Ekip")}</span>
             </button>
           )}
 
@@ -285,12 +286,14 @@ export default function App() {
           <div className="user-nav-badge" title={`${currentUser.name} (${currentUser.branchName || ''}) ${currentUser.countryLabel || ''}`}>
             {currentUser.role === 'admin' ? (
               <span className="user-role-icon admin">👑</span>
+            ) : currentUser.role === 'moderator' ? (
+              <span className="user-role-icon moderator" title={t.teamLeader || "Lidè Ekip"}>🛡️</span>
             ) : (
               <span className="user-role-icon agent">{currentUser.countryFlag || '👤'}</span>
             )}
             <div className="user-nav-details">
               <span className="user-nav-name">{currentUser.name?.split(' ')[0] || currentUser.username}</span>
-              <span className="user-nav-pos">{currentUser.posId || config?.posId || 'POS-01'}</span>
+              <span className="user-nav-pos">{currentUser.role === 'moderator' ? (currentUser.teamName || 'Ekip Nò') : (currentUser.posId || config?.posId || 'POS-01')}</span>
             </div>
           </div>
 
@@ -329,12 +332,13 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="pos-main-content">
-        {activeTab === 'admin' && currentUser.role === 'admin' && (
+        {activeTab === 'admin' && (currentUser.role === 'admin' || currentUser.role === 'moderator') && (
           <AdminDashboard 
             config={config}
             draws={draws}
             lang={lang}
             t={t}
+            currentUser={currentUser}
             onDrawsUpdated={loadInitialData}
             onReprintTicket={handleReprintTicket}
             onCancelTicket={handleCancelTicket}
@@ -369,8 +373,10 @@ export default function App() {
         {activeTab === 'results' && (
           <ResultsManagerScreen 
             draws={draws}
+            config={config}
             lang={lang}
             t={t}
+            currentUser={currentUser}
             onResultPublished={loadInitialData}
           />
         )}

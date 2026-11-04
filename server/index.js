@@ -42,8 +42,8 @@ app.use((req, res, next) => {
 // Auth & Agent Management Endpoints
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { username, pin, password } = req.body;
-    const user = await db.authenticateUser({ username, pin, password });
+    const { username, pin, password, deviceId } = req.body;
+    const user = await db.authenticateUser({ username, pin, password, deviceId });
     res.json({ success: true, user });
   } catch (err) {
     res.status(401).json({ error: err.message || "Erè koneksyon / Erreur d'authentification" });
@@ -52,7 +52,8 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/agents', async (req, res) => {
   try {
-    const agents = await db.getAgents();
+    const { supervisorId, teamName, role } = req.query;
+    const agents = await db.getAgents({ supervisorId, teamName, role });
     res.json(agents);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -71,6 +72,19 @@ app.post('/api/auth/agents', async (req, res) => {
 app.post('/api/auth/agents/:id/toggle', async (req, res) => {
   try {
     const result = await db.toggleAgentStatus(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/agents/:id/pin', async (req, res) => {
+  try {
+    const { newPin, requesterRole } = req.body;
+    if (requesterRole && requesterRole !== 'admin') {
+      return res.status(403).json({ error: 'Sèl Admin Santral ki gen dwa chanje kòd PIN / Seul l\'Admin peut modifier le PIN' });
+    }
+    const result = await db.updateUserPin(req.params.id, newPin);
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -193,10 +207,15 @@ app.post('/api/draws/:id/override', async (req, res) => {
 });
 
 // Tickets Endpoints
-app.get('/api/tickets', (req, res) => {
+app.get('/api/tickets', async (req, res) => {
   try {
-    const { drawId, status, date } = req.query;
-    res.json(db.getTickets({ drawId, status, date }));
+    const { drawId, status, date, supervisorId, teamName, sellerId } = req.query;
+    let sellerIds = null;
+    if (supervisorId || teamName) {
+      const agents = await db.getAgents({ supervisorId, teamName });
+      sellerIds = agents.flatMap(a => [a.username, a.posId, a.name]);
+    }
+    res.json(db.getTickets({ drawId, status, date, sellerId, sellerIds }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -211,9 +230,9 @@ app.post('/api/tickets', async (req, res) => {
   }
 });
 
-app.get('/api/tickets/:id', (req, res) => {
+app.get('/api/tickets/:id', async (req, res) => {
   try {
-    const ticket = db.getTicketById(req.params.id);
+    const ticket = await db.getTicketByIdAsync(req.params.id);
     if (!ticket) return res.status(404).json({ error: "Tikè pa jwenn / Ticket introuvable" });
     res.json(ticket);
   } catch (err) {
@@ -232,12 +251,12 @@ app.post('/api/tickets/:id/cancel', async (req, res) => {
 });
 
 // Ticket Verification (Scan Barcode / Ticket ID / Security Code)
-app.post('/api/tickets/verify', (req, res) => {
+app.post('/api/tickets/verify', async (req, res) => {
   try {
     const { query } = req.body;
     if (!query) return res.status(400).json({ error: "Kòd tikè a obligatwa / Code ticket requis" });
     
-    const ticket = db.getTicketById(query);
+    const ticket = await db.getTicketByIdAsync(query);
     if (!ticket) {
       return res.status(404).json({ error: "Tikè sa a pa jwenn nan sistèm nan / Ce billet n'existe pas" });
     }
@@ -275,7 +294,12 @@ app.get('/api/results', (req, res) => {
 
 app.post('/api/results', async (req, res) => {
   try {
-    const { drawId, drawDate, lot1, lot2, lot3, pick3, pick4 } = req.body;
+    const { drawId, drawDate, lot1, lot2, lot3, pick3, pick4, role } = req.body;
+    if (role && role !== 'admin') {
+      return res.status(403).json({ 
+        error: "Aksè Refize: Sèl Administratè Santral ki gen dwa pibliye rezilta tiraj / Accès refusé: Seul l'administrateur peut publier les résultats." 
+      });
+    }
     if (!drawId || !drawDate || !lot1 || !lot2 || !lot3) {
       return res.status(400).json({ error: "Tout chan yo obligatwa (Tiraj, Dat, 1er, 2e, 3e lo)" });
     }
@@ -287,10 +311,15 @@ app.post('/api/results', async (req, res) => {
 });
 
 // Daily Report
-app.get('/api/reports/daily', (req, res) => {
+app.get('/api/reports/daily', async (req, res) => {
   try {
-    const { date } = req.query;
-    res.json(db.getDailyReport(date));
+    const { date, supervisorId, teamName } = req.query;
+    let sellerIds = null;
+    if (supervisorId || teamName) {
+      const agents = await db.getAgents({ supervisorId, teamName });
+      sellerIds = agents.flatMap(a => [a.username, a.posId, a.name]);
+    }
+    res.json(db.getDailyReport(date, { sellerIds }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -24,6 +24,31 @@ const COUNTRY_TIMEZONES = {
   US: { tz: 'America/New_York', label: 'Estados Unidos', flag: '🇺🇸' }
 };
 
+export function getLocalDrawDate(timeZone = 'America/New_York', date = new Date()) {
+  try {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    return fmt.format(date);
+  } catch (e) {
+    const d = new Date(date);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+}
+
+const DEFAULT_USERS = [
+  { id: 'usr_admin', username: 'admin', pin: '5090', password: 'admin509', name: 'Administrateur Central LOTO509', role: 'admin', posId: 'POS-ADMIN-00', branchName: 'Direksyon Jeneral LOTO509', country: 'HT', teamName: 'Direksyon Santral', supervisorId: null, enabled: true },
+  { id: 'usr_mod_01', username: 'mod1', pin: '4040', password: 'mod509', name: 'Alain Dessalines (Lidè Ekip Nò)', role: 'moderator', posId: 'POS-MOD-01', branchName: 'Ekip Nò & Dèlma', country: 'HT', teamName: 'Ekip Nò', supervisorId: 'usr_admin', enabled: true },
+  { id: 'usr_agent_01', username: 'agent1', pin: '1234', password: '1234', name: 'Jean-Baptiste Pierre (Petyonvil)', role: 'agent', posId: 'POS-SUNMI-01', branchName: 'Santral Petyonvil / Pétion-Ville', country: 'HT', teamName: 'Ekip Santral', supervisorId: 'usr_admin', enabled: true },
+  { id: 'usr_agent_02', username: 'agent2', pin: '5678', password: '5678', name: 'Marie-Claire Joseph (Dèlma)', role: 'agent', posId: 'POS-SUNMI-02', branchName: 'Sikisal Dèlma 33 / Delmas', country: 'HT', teamName: 'Ekip Nò', supervisorId: 'usr_mod_01', enabled: true }
+];
+
 // Ensure local data folder exists as backup/cache
 try {
   if (!fs.existsSync(path.join(__dirname, 'data'))) {
@@ -199,12 +224,178 @@ class Store {
       console.log('[POSTGRES] Connected to Neon PostgreSQL successfully!');
       this.pgConnected = true;
 
+      // Ensure tables exist before syncing
+      await this.ensureSchema(client);
+
       // Load data from PostgreSQL to populate memory cache
       await this.syncFromPostgres(client);
       client.release();
     } catch (err) {
       console.error('[POSTGRES] Connection error:', err.message);
       this.pgConnected = false;
+    }
+  }
+
+  async ensureSchema(client) {
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS loto_config (
+          id VARCHAR(50) PRIMARY KEY,
+          company_name VARCHAR(255) NOT NULL,
+          company_subtitle VARCHAR(255),
+          pos_id VARCHAR(100),
+          branch_name VARCHAR(255),
+          phone VARCHAR(100),
+          currency VARCHAR(10) DEFAULT 'MXN',
+          currency_symbol VARCHAR(10) DEFAULT 'MX$',
+          cancellation_window_minutes INT DEFAULT 5,
+          max_bet_per_number NUMERIC DEFAULT 5000,
+          min_bet NUMERIC DEFAULT 5,
+          multipliers JSONB NOT NULL,
+          disclaimer_ht TEXT,
+          disclaimer_fr TEXT,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS loto_draws (
+          id VARCHAR(50) PRIMARY KEY,
+          state VARCHAR(10) NOT NULL,
+          name_fr VARCHAR(100) NOT NULL,
+          name_ht VARCHAR(100) NOT NULL,
+          time_period VARCHAR(20) NOT NULL,
+          cutoff_time VARCHAR(10) NOT NULL,
+          draw_time VARCHAR(10) NOT NULL,
+          timezone VARCHAR(50) DEFAULT 'America/New_York',
+          enabled BOOLEAN DEFAULT true,
+          manual_override VARCHAR(20),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS loto_tickets (
+          id VARCHAR(50) PRIMARY KEY,
+          barcode VARCHAR(50) NOT NULL,
+          security_code VARCHAR(50) NOT NULL,
+          draw_id VARCHAR(50) NOT NULL,
+          draw_name_fr VARCHAR(100),
+          draw_name_ht VARCHAR(100),
+          draw_date VARCHAR(20) NOT NULL,
+          draw_time VARCHAR(20),
+          total_amount NUMERIC NOT NULL,
+          currency VARCHAR(10) DEFAULT 'MXN',
+          currency_symbol VARCHAR(10) DEFAULT 'MX$',
+          status VARCHAR(20) DEFAULT 'active',
+          plays JSONB NOT NULL,
+          winnings JSONB,
+          branch_name VARCHAR(255),
+          pos_id VARCHAR(100),
+          seller_id VARCHAR(100),
+          cancelled_at TIMESTAMP WITH TIME ZONE,
+          paid_at TIMESTAMP WITH TIME ZONE,
+          paid_by VARCHAR(100),
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS loto_results (
+          id VARCHAR(100) PRIMARY KEY,
+          draw_id VARCHAR(50) NOT NULL,
+          draw_date VARCHAR(20) NOT NULL,
+          lot1 VARCHAR(10) NOT NULL,
+          lot2 VARCHAR(10) NOT NULL,
+          lot3 VARCHAR(10) NOT NULL,
+          pick3 VARCHAR(10),
+          pick4 VARCHAR(10),
+          entered_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          verified BOOLEAN DEFAULT true
+        );
+
+        CREATE TABLE IF NOT EXISTS loto_blocked_numbers (
+          id VARCHAR(100) PRIMARY KEY,
+          draw_id VARCHAR(50) NOT NULL,
+          number_key VARCHAR(50) NOT NULL,
+          game_type VARCHAR(50) DEFAULT 'bolette',
+          amount NUMERIC NOT NULL DEFAULT 0,
+          reason TEXT DEFAULT '',
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+
+        ALTER TABLE loto_blocked_numbers ADD COLUMN IF NOT EXISTS id VARCHAR(100);
+        ALTER TABLE loto_blocked_numbers ADD COLUMN IF NOT EXISTS game_type VARCHAR(50) DEFAULT 'bolette';
+        ALTER TABLE loto_blocked_numbers ADD COLUMN IF NOT EXISTS reason TEXT DEFAULT '';
+        ALTER TABLE loto_blocked_numbers ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_blocked_draw_num ON loto_blocked_numbers(draw_id, number_key);
+
+        CREATE TABLE IF NOT EXISTS loto_users (
+          id VARCHAR(50) PRIMARY KEY,
+          username VARCHAR(100) UNIQUE NOT NULL,
+          pin VARCHAR(20) NOT NULL,
+          password VARCHAR(255) NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          role VARCHAR(20) DEFAULT 'agent',
+          pos_id VARCHAR(100),
+          branch_name VARCHAR(255),
+          country VARCHAR(5) DEFAULT 'HT',
+          team_name VARCHAR(100),
+          supervisor_id VARCHAR(50),
+          enabled BOOLEAN DEFAULT true,
+          last_login TIMESTAMP WITH TIME ZONE,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+
+        ALTER TABLE loto_users ADD COLUMN IF NOT EXISTS country VARCHAR(5) DEFAULT 'HT';
+        ALTER TABLE loto_users ADD COLUMN IF NOT EXISTS team_name VARCHAR(100);
+        ALTER TABLE loto_users ADD COLUMN IF NOT EXISTS supervisor_id VARCHAR(50);
+        ALTER TABLE loto_tickets ADD COLUMN IF NOT EXISTS seller_name VARCHAR(255);
+
+        CREATE INDEX IF NOT EXISTS idx_tickets_draw ON loto_tickets(draw_id, draw_date);
+        CREATE INDEX IF NOT EXISTS idx_tickets_barcode ON loto_tickets(barcode);
+        CREATE INDEX IF NOT EXISTS idx_tickets_security ON loto_tickets(security_code);
+        CREATE INDEX IF NOT EXISTS idx_results_draw ON loto_results(draw_id, draw_date);
+      `);
+
+      // Seed config if empty
+      const cfgCount = await client.query('SELECT COUNT(*) FROM loto_config');
+      if (parseInt(cfgCount.rows[0].count) === 0) {
+        const c = this.data.config;
+        await client.query(`
+          INSERT INTO loto_config (
+            id, company_name, company_subtitle, pos_id, branch_name, phone,
+            currency, currency_symbol, cancellation_window_minutes, max_bet_per_number,
+            min_bet, multipliers, disclaimer_ht, disclaimer_fr
+          ) VALUES ('main', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          ON CONFLICT (id) DO NOTHING
+        `, [
+          c.companyName, c.companySubtitle, c.posId, c.branchName, c.phone,
+          c.currency, c.currencySymbol, c.cancellationWindowMinutes, c.maxBetPerNumber,
+          c.minBet, JSON.stringify(c.multipliers), c.disclaimerHt, c.disclaimerFr
+        ]);
+      }
+
+      // Seed draws if empty
+      const drawsCount = await client.query('SELECT COUNT(*) FROM loto_draws');
+      if (parseInt(drawsCount.rows[0].count) === 0) {
+        for (const d of this.data.draws) {
+          await client.query(`
+            INSERT INTO loto_draws (
+              id, state, name_fr, name_ht, time_period, cutoff_time, draw_time, timezone, enabled, manual_override
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (id) DO NOTHING
+          `, [d.id, d.state, d.nameFr, d.nameHt, d.timePeriod, d.cutoffTime, d.drawTime, d.timeZone || 'America/New_York', d.enabled, d.manualOverride]);
+        }
+      }
+
+      // Seed or ensure default users (Admin, Moderator, Agents)
+      for (const u of DEFAULT_USERS) {
+        await client.query(`
+          INSERT INTO loto_users (id, username, pin, password, name, role, pos_id, branch_name, country, team_name, supervisor_id, enabled)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
+          ON CONFLICT (username) DO UPDATE SET
+            team_name = COALESCE(loto_users.team_name, EXCLUDED.team_name),
+            supervisor_id = COALESCE(loto_users.supervisor_id, EXCLUDED.supervisor_id),
+            role = COALESCE(loto_users.role, EXCLUDED.role)
+        `, [u.id, u.username, u.pin, u.password, u.name, u.role, u.posId, u.branchName, u.country, u.teamName, u.supervisorId]);
+      }
+    } catch (err) {
+      console.warn('[POSTGRES] ensureSchema notice:', err.message);
     }
   }
 
@@ -269,6 +460,7 @@ class Store {
           branchName: t.branch_name,
           posId: t.pos_id,
           sellerId: t.seller_id,
+          sellerName: t.seller_name || t.seller_id || "Agent POS",
           cancelledAt: t.cancelled_at,
           paidAt: t.paid_at,
           paidBy: t.paid_by,
@@ -392,6 +584,21 @@ class Store {
       let localCutoff = draw.cutoffTime;
       let localDrawTime = draw.drawTime;
       let agentTzLabel = null;
+      const targetTz = agentTz || draw.timeZone || 'America/New_York';
+
+      // Current live time formatted in target timezone
+      let currentTimeStr = '12:00';
+      try {
+        const timeFmt = new Intl.DateTimeFormat('en-US', {
+          timeZone: targetTz,
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        currentTimeStr = timeFmt.format(new Date());
+      } catch (e) {
+        currentTimeStr = new Date().toTimeString().slice(0, 5);
+      }
 
       // Convert draw times to agent's local timezone if different
       if (agentTz && agentTz !== (draw.timeZone || 'America/New_York')) {
@@ -413,6 +620,7 @@ class Store {
         localDrawTime: localDrawTime,
         originalCutoffTime: draw.cutoffTime,
         originalDrawTime: draw.drawTime,
+        currentTimeStr,
         agentTzLabel
       };
     });
@@ -424,7 +632,7 @@ class Store {
       const [h, m] = timeStr.split(':').map(Number);
       // Create a date in the source timezone
       const now = new Date();
-      const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+      const dateStr = getLocalDrawDate(fromTz, now);
       // Build an absolute moment: today at h:m in fromTz
       const srcDate = new Date(`${dateStr}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`);
       // Get UTC offset for source timezone
@@ -437,26 +645,19 @@ class Store {
       });
 
       // Use a reference date to calculate offset difference
-      // Create a fixed UTC time, then format in both timezones
       const refUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
       const refDate = new Date(refUtc);
 
-      // Get the source timezone's representation of this UTC time
       const srcParts = srcFormatter.formatToParts(refDate);
       const srcH = parseInt(srcParts.find(p => p.type === 'hour').value, 10);
       const srcM = parseInt(srcParts.find(p => p.type === 'minute').value, 10);
-
-      // We need: when it's h:m in fromTz, what time is it in toTz?
-      // Offset = (srcH*60+srcM) - (h*60+m) means fromTz is ahead of UTC by this much
       const srcOffset = (srcH * 60 + srcM) - (h * 60 + m);
 
-      // Now get toTz representation of the same UTC time
       const dstParts = dstFormatter.formatToParts(refDate);
       const dstH = parseInt(dstParts.find(p => p.type === 'hour').value, 10);
       const dstM = parseInt(dstParts.find(p => p.type === 'minute').value, 10);
       const dstOffset = (dstH * 60 + dstM) - (h * 60 + m);
 
-      // Target time = original time + (dstOffset - srcOffset)
       const diff = dstOffset - srcOffset;
       let totalMin = (h * 60 + m) + diff;
       if (totalMin < 0) totalMin += 24 * 60;
@@ -492,21 +693,15 @@ class Store {
     const [cutoffH, cutoffM] = draw.cutoffTime.split(':').map(Number);
     const cutoffMinutes = cutoffH * 60 + cutoffM;
 
-    // Reopen delay in minutes (default 30 min after cutoff)
-    const reopenDelay = draw.reopenDelay || 30;
-    const reopenMinutes = cutoffMinutes + reopenDelay;
-
     if (currentMinutes < cutoffMinutes) {
-      // Before cutoff → OPEN
+      // Before cutoff → OPEN for today's draw
       const diff = cutoffMinutes - currentMinutes;
       return { status: 'open', closesInMinutes: diff };
-    } else if (currentMinutes >= cutoffMinutes && currentMinutes < reopenMinutes) {
-      // Between cutoff and reopen → CLOSED (waiting period)
-      return { status: 'closed', closesInMinutes: 0, reopensInMinutes: reopenMinutes - currentMinutes };
     } else {
-      // After reopen time → OPEN again (next day's draw)
-      const diff = (24 * 60 - currentMinutes) + cutoffMinutes; // minutes until next cutoff
-      return { status: 'open', closesInMinutes: diff };
+      // At or after cutoff → CLOSED for today
+      // Reopens at midnight for tomorrow's draw cycle
+      const reopensInMinutes = (24 * 60 - currentMinutes);
+      return { status: 'closed', closesInMinutes: 0, reopensInMinutes };
     }
   }
 
@@ -536,7 +731,7 @@ class Store {
   }
 
   calculateNumberExposure(drawId, gameType, numberStr) {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDrawDate();
     let sum = 0;
     if (!this.data.tickets) return 0;
     for (const t of this.data.tickets) {
@@ -626,7 +821,7 @@ class Store {
   }
 
   async createTicket(ticketData) {
-    const { drawId, plays, sellerId, branchName, posId } = ticketData;
+    const { drawId, plays, sellerId, sellerName, branchName, posId } = ticketData;
 
     const draw = this.data.draws.find(d => d.id === drawId);
     if (!draw) throw new Error("Tiraj chwazi a pa valid");
@@ -646,10 +841,10 @@ class Store {
     });
 
     const now = new Date();
-    const dateStr = now.toISOString().split('T')[0];
+    const dateStr = getLocalDrawDate(draw.timeZone || 'America/New_York', now);
     const timeStr = now.toTimeString().split(' ')[0].substring(0, 5);
 
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const randomSuffix = `${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 89)}`;
     const ticketId = `TK-${dateStr.replace(/-/g, '')}-${randomSuffix}`;
     const barcode = `${Math.floor(10000000 + Math.random() * 90000000)}`;
     const securityCode = `SEC-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${Math.floor(10 + Math.random() * 89)}`;
@@ -667,7 +862,7 @@ class Store {
       totalAmount,
       currency: this.data.config.currency,
       currencySymbol: this.data.config.currencySymbol,
-      status: 'pending',
+      status: 'active',
       plays,
       winnings: {
         totalWon: 0,
@@ -676,6 +871,7 @@ class Store {
       branchName: branchName || this.data.config.branchName,
       posId: posId || this.data.config.posId,
       sellerId: sellerId || "Caissier-01",
+      sellerName: sellerName || ticketData.sellerName || sellerId || "Agent POS",
       cancelledAt: null,
       paidAt: null,
       paidBy: null
@@ -690,17 +886,17 @@ class Store {
           INSERT INTO loto_tickets (
             id, barcode, security_code, draw_id, draw_name_fr, draw_name_ht,
             draw_date, draw_time, total_amount, currency, currency_symbol,
-            status, plays, winnings, branch_name, pos_id, seller_id,
+            status, plays, winnings, branch_name, pos_id, seller_id, seller_name,
             created_at
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
           )
         `, [
           newTicket.id, newTicket.barcode, newTicket.securityCode, newTicket.drawId,
           newTicket.drawNameFr, newTicket.drawNameHt, newTicket.drawDate, newTicket.drawTime,
           newTicket.totalAmount, newTicket.currency, newTicket.currencySymbol,
           newTicket.status, JSON.stringify(newTicket.plays), JSON.stringify(newTicket.winnings),
-          newTicket.branchName, newTicket.posId, newTicket.sellerId, newTicket.createdAt
+          newTicket.branchName, newTicket.posId, newTicket.sellerId, newTicket.sellerName, newTicket.createdAt
         ]);
       } catch (err) {
         console.error('[POSTGRES] Failed to insert ticket:', err.message);
@@ -714,8 +910,24 @@ class Store {
   getTickets(filter = {}) {
     let result = this.data.tickets;
     if (filter.drawId) result = result.filter(t => t.drawId === filter.drawId);
-    if (filter.status) result = result.filter(t => t.status === filter.status);
+    if (filter.status) {
+      if (filter.status === 'active' || filter.status === 'pending') {
+        result = result.filter(t => t.status === 'active' || t.status === 'pending');
+      } else {
+        result = result.filter(t => t.status === filter.status);
+      }
+    }
     if (filter.date) result = result.filter(t => t.drawDate === filter.date);
+    if (filter.sellerId) {
+      result = result.filter(t => t.sellerId === filter.sellerId || t.posId === filter.sellerId);
+    }
+    if (filter.sellerIds && Array.isArray(filter.sellerIds) && filter.sellerIds.length > 0) {
+      result = result.filter(t => 
+        filter.sellerIds.includes(t.sellerId) || 
+        filter.sellerIds.includes(t.posId) || 
+        filter.sellerIds.includes(t.sellerName)
+      );
+    }
     return result;
   }
 
@@ -729,11 +941,61 @@ class Store {
     );
   }
 
+  async getTicketByIdAsync(idOrBarcodeOrCode) {
+    const memoryTicket = this.getTicketById(idOrBarcodeOrCode);
+    if (memoryTicket) return memoryTicket;
+
+    if (this.pgPool && this.pgConnected) {
+      try {
+        const clean = String(idOrBarcodeOrCode).trim();
+        const res = await this.pgPool.query(
+          'SELECT * FROM loto_tickets WHERE LOWER(id) = LOWER($1) OR barcode = $1 OR LOWER(security_code) = LOWER($1) LIMIT 1',
+          [clean]
+        );
+        if (res.rows.length > 0) {
+          const t = res.rows[0];
+          const ticket = {
+            id: t.id,
+            barcode: t.barcode,
+            securityCode: t.security_code,
+            drawId: t.draw_id,
+            drawNameFr: t.draw_name_fr,
+            drawNameHt: t.draw_name_ht,
+            drawDate: t.draw_date,
+            drawTime: t.draw_time,
+            totalAmount: Number(t.total_amount),
+            currency: t.currency,
+            currencySymbol: t.currency_symbol,
+            status: t.status,
+            plays: t.plays,
+            winnings: t.winnings,
+            branchName: t.branch_name,
+            posId: t.pos_id,
+            sellerId: t.seller_id,
+            sellerName: t.seller_name || t.seller_id || "Agent POS",
+            cancelledAt: t.cancelled_at,
+            paidAt: t.paid_at,
+            paidBy: t.paid_by,
+            createdAt: t.created_at
+          };
+          this.data.tickets.unshift(ticket);
+          return ticket;
+        }
+      } catch (err) {
+        console.error('[POSTGRES] getTicketByIdAsync error:', err.message);
+      }
+    }
+    return null;
+  }
+
   async cancelTicket(ticketId, userRole = 'agent') {
-    const ticket = this.getTicketById(ticketId);
+    const ticket = await this.getTicketByIdAsync(ticketId);
     if (!ticket) throw new Error("Tikè sa a pa egziste / Ticket non trouvé");
     if (ticket.status === 'cancelled') throw new Error("Tikè a te deja anile / Billet déjà annulé");
     if (ticket.status === 'paid') throw new Error("Tikè sa a deja peye / Billet déjà payé");
+    if (ticket.status === 'won' || ticket.status === 'lost') {
+      throw new Error("Tiraj la gentan fèt. Pa ka anile tikè sa a. / Le tirage a déjà eu lieu.");
+    }
 
     const draw = this.data.draws.find(d => d.id === ticket.drawId);
 
@@ -782,7 +1044,7 @@ class Store {
   }
 
   async payoutTicket(ticketId, cashierName = "Caisse") {
-    const ticket = this.getTicketById(ticketId);
+    const ticket = await this.getTicketByIdAsync(ticketId);
     if (!ticket) throw new Error("Tikè sa a pa egziste / Ticket non trouvé");
     if (ticket.status !== 'won') throw new Error("Tikè sa a pa yon tikè gayan / Ce billet n'est pas gagnant");
     if (ticket.paidAt) throw new Error("Tikè a te deja peye / Ce billet a déjà été payé");
@@ -926,8 +1188,8 @@ class Store {
       lot1: String(resultData.lot1).padStart(2, '0'),
       lot2: String(resultData.lot2).padStart(2, '0'),
       lot3: String(resultData.lot3).padStart(2, '0'),
-      pick3: resultData.pick3 ? String(resultData.pick3) : `${resultData.lot1}`,
-      pick4: resultData.pick4 ? String(resultData.pick4) : `${resultData.lot2}${resultData.lot3}`,
+      pick3: resultData.pick3 ? String(resultData.pick3).padStart(3, '0') : null,
+      pick4: resultData.pick4 ? String(resultData.pick4).padStart(4, '0') : null,
       enteredAt: new Date().toISOString(),
       verified: true
     };
@@ -1004,9 +1266,17 @@ class Store {
     return this.data.results.sort((a, b) => new Date(b.enteredAt) - new Date(a.enteredAt));
   }
 
-  getDailyReport(dateStr) {
-    const today = dateStr || new Date().toISOString().split('T')[0];
-    const tickets = this.data.tickets.filter(t => t.drawDate === today);
+  getDailyReport(dateStr, filter = {}) {
+    const today = dateStr || getLocalDrawDate();
+    let tickets = this.data.tickets.filter(t => t.drawDate === today);
+
+    if (filter && Array.isArray(filter.sellerIds) && filter.sellerIds.length > 0) {
+      tickets = tickets.filter(t => 
+        filter.sellerIds.includes(t.sellerId) || 
+        filter.sellerIds.includes(t.posId) ||
+        filter.sellerIds.includes(t.sellerName)
+      );
+    }
 
     let totalSales = 0;
     let totalCancelled = 0;
@@ -1078,8 +1348,8 @@ class Store {
     };
   }
 
-  async authenticateUser({ username, pin, password }) {
-    if (this.pgPool) {
+  async authenticateUser({ username, pin, password, deviceId }) {
+    if (this.pgPool && this.pgConnected) {
       try {
         let query = '';
         let params = [];
@@ -1095,61 +1365,134 @@ class Store {
         }
 
         const res = await this.pgPool.query(query, params);
-        if (res.rows.length === 0) {
-          throw new Error('PIN oswa modpas la pa kòrèk / Identifiants incorrects');
+        if (res.rows.length > 0) {
+          const user = res.rows[0];
+
+          // Check device / POS ID binding if user is an agent/moderator with assigned pos_id
+          if (user.role !== 'admin' && user.pos_id) {
+            const allowedDevices = String(user.pos_id)
+              .split(',')
+              .map(d => d.trim().toLowerCase())
+              .filter(Boolean);
+
+            const currentDevice = String(deviceId || '').trim().toLowerCase();
+            if (allowedDevices.length > 0 && (!currentDevice || !allowedDevices.includes(currentDevice))) {
+              throw new Error(
+                `Aksè Refize: Kòd PIN sa a lye sèlman ak aparèy #${user.pos_id}. Aparèy sa a gen ID: [${deviceId || 'Okenn'}].`
+              );
+            }
+          }
+
+          await this.pgPool.query('UPDATE loto_users SET last_login = NOW() WHERE id = $1', [user.id]).catch(() => {});
+
+          const country = user.country || 'HT';
+          const tzInfo = COUNTRY_TIMEZONES[country] || COUNTRY_TIMEZONES.HT;
+
+          return {
+            id: user.id,
+            username: user.username,
+            name: user.name,
+            role: user.role, // 'admin', 'moderator', or 'agent'
+            posId: user.pos_id || this.data.config.posId,
+            branchName: user.branch_name || this.data.config.branchName,
+            teamName: user.team_name || (user.role === 'admin' ? 'Direksyon Santral' : 'Ekip Prensipal'),
+            supervisorId: user.supervisor_id,
+            country: country,
+            timezone: tzInfo.tz,
+            countryFlag: tzInfo.flag,
+            countryLabel: tzInfo.label
+          };
         }
-
-        const user = res.rows[0];
-        await this.pgPool.query('UPDATE loto_users SET last_login = NOW() WHERE id = $1', [user.id]);
-
-        const country = user.country || 'HT';
-        const tzInfo = COUNTRY_TIMEZONES[country] || COUNTRY_TIMEZONES.HT;
-
-        return {
-          id: user.id,
-          username: user.username,
-          name: user.name,
-          role: user.role, // 'admin' or 'agent'
-          posId: user.pos_id || this.data.config.posId,
-          branchName: user.branch_name || this.data.config.branchName,
-          country: country,
-          timezone: tzInfo.tz,
-          countryFlag: tzInfo.flag,
-          countryLabel: tzInfo.label
-        };
       } catch (err) {
-        if (err.message.includes('Identifiants') || err.message.includes('Tanpri')) {
-          throw err;
-        }
-        console.error('[POSTGRES] Auth error:', err.message);
+        if (err.message.includes('Tanpri') || err.message.includes('Aksè Refize')) throw err;
+        console.warn('[POSTGRES] Auth query failed, checking fallback:', err.message);
       }
     }
 
-    // No local fallback — all auth goes through PostgreSQL
+    // Local fallback authentication
+    const cleanPin = pin ? String(pin).trim() : null;
+    const cleanUser = username ? String(username).toLowerCase().trim() : null;
+    const cleanPass = password ? String(password).trim() : null;
+
+    const matched = DEFAULT_USERS.find(u => {
+      if (!u.enabled) return false;
+      if (cleanPin && u.pin === cleanPin) return true;
+      if (cleanUser && cleanPass && u.username.toLowerCase() === cleanUser && (u.password === cleanPass || u.pin === cleanPass)) return true;
+      return false;
+    });
+
+    if (matched) {
+      // Check device / POS ID binding in fallback
+      if (matched.role !== 'admin' && matched.posId) {
+        const allowedDevices = String(matched.posId)
+          .split(',')
+          .map(d => d.trim().toLowerCase())
+          .filter(Boolean);
+
+        const currentDevice = String(deviceId || '').trim().toLowerCase();
+        if (allowedDevices.length > 0 && (!currentDevice || !allowedDevices.includes(currentDevice))) {
+          throw new Error(
+            `Aksè Refize: Kòd PIN sa a lye sèlman ak aparèy #${matched.posId}. Aparèy sa a gen ID: [${deviceId || 'Okenn'}].`
+          );
+        }
+      }
+
+      const country = matched.country || 'HT';
+      const tzInfo = COUNTRY_TIMEZONES[country] || COUNTRY_TIMEZONES.HT;
+      return {
+        id: matched.id,
+        username: matched.username,
+        name: matched.name,
+        role: matched.role,
+        posId: matched.posId || this.data.config.posId,
+        branchName: matched.branchName || this.data.config.branchName,
+        teamName: matched.teamName || (matched.role === 'admin' ? 'Direksyon Santral' : 'Ekip Prensipal'),
+        supervisorId: matched.supervisorId,
+        country: country,
+        timezone: tzInfo.tz,
+        countryFlag: tzInfo.flag,
+        countryLabel: tzInfo.label
+      };
+    }
+
     throw new Error('PIN oswa modpas la pa kòrèk / Identifiants incorrects');
   }
 
-  async getAgents() {
+  async getAgents(filter = {}) {
     let users = [];
     if (this.pgPool) {
       try {
-        const res = await this.pgPool.query('SELECT id, username, name, role, pos_id, branch_name, country, enabled, last_login, created_at FROM loto_users ORDER BY role, username');
+        const res = await this.pgPool.query(`
+          SELECT u.id, u.username, u.pin, u.name, u.role, u.pos_id, u.branch_name, 
+                 u.country, u.team_name, u.supervisor_id, u.enabled, u.last_login, u.created_at,
+                 s.name as supervisor_name
+          FROM loto_users u
+          LEFT JOIN loto_users s ON u.supervisor_id = s.id
+          ORDER BY 
+            CASE u.role WHEN 'admin' THEN 1 WHEN 'moderator' THEN 2 ELSE 3 END, 
+            u.team_name, u.username
+        `);
         users = res.rows.map(u => {
           const country = u.country || 'HT';
           const tzInfo = COUNTRY_TIMEZONES[country] || COUNTRY_TIMEZONES.HT;
           return {
             id: u.id,
             username: u.username,
+            pin: u.pin,
             name: u.name,
             role: u.role,
             posId: u.pos_id,
             branchName: u.branch_name,
             country: country,
+            teamName: u.team_name || (u.role === 'admin' ? 'Direksyon Santral' : 'Ekip Prensipal'),
+            supervisorId: u.supervisor_id,
+            supervisorName: u.supervisor_name || (u.role === 'admin' ? 'Santral' : null),
             timezone: tzInfo.tz,
             countryFlag: tzInfo.flag,
             countryLabel: tzInfo.label,
             enabled: u.enabled,
-            lastLogin: u.last_login
+            lastLogin: u.last_login,
+            createdAt: u.created_at
           };
         });
       } catch (err) {
@@ -1158,14 +1501,42 @@ class Store {
     }
 
     if (users.length === 0) {
-      users = [
-        { id: 'usr_admin', username: 'admin', name: 'Administrateur Central LOTO509', role: 'admin', posId: 'POS-ADMIN-00', branchName: 'Direksyon Jeneral LOTO509', enabled: true },
-        { id: 'usr_agent_01', username: 'agent1', name: 'Jean-Baptiste Pierre (Petyonvil)', role: 'agent', posId: 'POS-SUNMI-01', branchName: 'Santral Petyonvil / Pétion-Ville', enabled: true },
-        { id: 'usr_agent_02', username: 'agent2', name: 'Marie-Claire Joseph (Dèlma)', role: 'agent', posId: 'POS-SUNMI-02', branchName: 'Sikisal Dèlma 33 / Delmas', enabled: true }
-      ];
+      users = DEFAULT_USERS.map(u => {
+        const country = u.country || 'HT';
+        const tzInfo = COUNTRY_TIMEZONES[country] || COUNTRY_TIMEZONES.HT;
+        const supervisor = DEFAULT_USERS.find(s => s.id === u.supervisorId);
+        return {
+          id: u.id,
+          username: u.username,
+          pin: u.pin,
+          name: u.name,
+          role: u.role,
+          posId: u.posId,
+          branchName: u.branchName,
+          country: country,
+          teamName: u.teamName || (u.role === 'admin' ? 'Direksyon Santral' : 'Ekip Prensipal'),
+          supervisorId: u.supervisorId,
+          supervisorName: supervisor?.name || (u.role === 'admin' ? 'Santral' : null),
+          timezone: tzInfo.tz,
+          countryFlag: tzInfo.flag,
+          countryLabel: tzInfo.label,
+          enabled: u.enabled,
+          createdAt: u.createdAt || new Date().toISOString()
+        };
+      });
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    // Apply filtering if requested (e.g. by supervisorId or teamName)
+    if (filter.supervisorId || filter.teamName) {
+      const targetSupervisor = users.find(s => s.id === filter.supervisorId || s.username === filter.supervisorId);
+      const targetTeam = filter.teamName || targetSupervisor?.teamName;
+      users = users.filter(u => 
+        (filter.supervisorId && (u.supervisorId === filter.supervisorId || u.id === filter.supervisorId)) ||
+        (targetTeam && u.teamName === targetTeam)
+      );
+    }
+
+    const today = getLocalDrawDate();
     const todayTickets = this.data.tickets.filter(t => t.drawDate === today && t.status !== 'cancelled');
 
     return users.map(u => {
@@ -1179,17 +1550,19 @@ class Store {
     });
   }
 
-  async createAgent({ username, pin, password, name, posId, branchName, role = 'agent', country = 'HT' }) {
+  async createAgent({ username, pin, password, name, posId, branchName, role = 'agent', country = 'HT', teamName = null, supervisorId = null }) {
     const id = `usr_${Date.now()}`;
     const cleanUser = String(username).toLowerCase().trim();
     const validCountry = COUNTRY_TIMEZONES[country] ? country : 'HT';
+    const cleanRole = ['admin', 'moderator', 'agent'].includes(role) ? role : 'agent';
+    const effectiveTeam = teamName?.trim() || (cleanRole === 'moderator' ? `Ekip ${name.split(' ')[0]}` : 'Ekip Prensipal');
 
     if (this.pgPool) {
       try {
         await this.pgPool.query(`
-          INSERT INTO loto_users (id, username, pin, password, name, role, pos_id, branch_name, country)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        `, [id, cleanUser, String(pin), String(password || pin), name, role, posId, branchName, validCountry]);
+          INSERT INTO loto_users (id, username, pin, password, name, role, pos_id, branch_name, country, team_name, supervisor_id)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `, [id, cleanUser, String(pin), String(password || pin), name, cleanRole, posId, branchName, validCountry, effectiveTeam, supervisorId]);
       } catch (err) {
         console.error('[POSTGRES] createAgent error:', err.message);
         throw err;
@@ -1197,7 +1570,22 @@ class Store {
     }
 
     const tzInfo = COUNTRY_TIMEZONES[validCountry] || COUNTRY_TIMEZONES.HT;
-    return { id, username: cleanUser, pin, name, role, posId, branchName, country: validCountry, timezone: tzInfo.tz, countryFlag: tzInfo.flag, countryLabel: tzInfo.label, enabled: true };
+    return { 
+      id, 
+      username: cleanUser, 
+      pin, 
+      name, 
+      role: cleanRole, 
+      posId, 
+      branchName, 
+      country: validCountry, 
+      teamName: effectiveTeam,
+      supervisorId,
+      timezone: tzInfo.tz, 
+      countryFlag: tzInfo.flag, 
+      countryLabel: tzInfo.label, 
+      enabled: true 
+    };
   }
 
   async toggleAgentStatus(userId) {
@@ -1211,6 +1599,42 @@ class Store {
       }
     }
     return { success: true, enabled: true };
+  }
+
+  async updateUserPin(userId, newPin) {
+    const cleanPin = String(newPin).trim();
+    if (!cleanPin || cleanPin.length < 4 || cleanPin.length > 20) {
+      throw new Error('Kòd PIN dwe genyen ant 4 ak 20 karaktè / Le PIN doit contenir entre 4 et 20 caractères');
+    }
+
+    if (this.pgPool) {
+      try {
+        const res = await this.pgPool.query(
+          `UPDATE loto_users 
+           SET pin = $1, password = $1 
+           WHERE id = $2 OR username = $2 
+           RETURNING id, username, name, pin, role`,
+          [cleanPin, userId]
+        );
+        if (res.rows.length === 0) {
+          throw new Error('Itilizatè pa jwenn nan baz done a / Utilisateur non trouvé');
+        }
+        return { success: true, user: res.rows[0] };
+      } catch (err) {
+        console.error('[POSTGRES] updateUserPin error:', err.message);
+        throw err;
+      }
+    }
+
+    // Fallback in-memory
+    const u = DEFAULT_USERS.find(x => x.id === userId || x.username === userId);
+    if (u) {
+      u.pin = cleanPin;
+      u.password = cleanPin;
+      return { success: true, user: u };
+    }
+
+    throw new Error('Itilizatè pa jwenn / Utilisateur non trouvé');
   }
 
   getBlockedNumbers() {

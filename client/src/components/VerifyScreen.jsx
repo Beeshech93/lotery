@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Search, CheckCircle2, XCircle, Award, DollarSign, 
-  Clock, ShieldCheck, Printer, AlertTriangle, Trash2 
+  Clock, Printer, AlertTriangle, Trash2 
 } from 'lucide-react';
 import { sounds } from '../soundEffects';
 
@@ -10,7 +10,6 @@ export default function VerifyScreen({ config, lang, t, currentUser, onReprintTi
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
-  const [payoutSuccess, setPayoutSuccess] = useState(false);
 
   const currencySymbol = config?.currencySymbol || (config?.currency === 'HTG' ? 'G' : config?.currency === 'MXN' ? 'MX$' : '$');
 
@@ -21,7 +20,6 @@ export default function VerifyScreen({ config, lang, t, currentUser, onReprintTi
     setLoading(true);
     setErrorMsg('');
     setResult(null);
-    setPayoutSuccess(false);
 
     try {
       const res = await fetch('/api/tickets/verify', {
@@ -56,13 +54,12 @@ export default function VerifyScreen({ config, lang, t, currentUser, onReprintTi
       const res = await fetch(`/api/tickets/${result.ticket.id}/payout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cashierName: config?.posId || "Agent Caisse" })
+        body: JSON.stringify({ cashierName: currentUser?.name || config?.posId || "Agent Caisse" })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erè nan pèyman");
 
       sounds.success();
-      setPayoutSuccess(true);
       setResult(prev => ({
         ...prev,
         isPaid: true,
@@ -200,7 +197,9 @@ export default function VerifyScreen({ config, lang, t, currentUser, onReprintTi
                 <div className="winning-plays-list">
                   {result.winnings.winningPlays.map((wp, i) => (
                     <div key={i} className="winning-play-row">
-                      <span className="wp-type">{wp.gameType === 'mariage' ? 'Maryaj' : 'Bòlèt'}</span>
+                      <span className="wp-type">
+                        {wp.gameType === 'mariage' ? 'Maryaj' : wp.gameType === 'loto3' ? 'Loto 3' : wp.gameType === 'loto4' ? 'Loto 4' : 'Bòlèt'}
+                      </span>
                       <span className="wp-num mono-text bold-text">{wp.numbers.join(' x ')}</span>
                       <span className="wp-lot badge-lot">{wp.lotWon}</span>
                       <span className="wp-mult mono-text">{wp.multiplier}x</span>

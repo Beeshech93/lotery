@@ -32,7 +32,7 @@ class SoundFX {
       gain.connect(this.ctx.destination);
       osc.start();
       osc.stop(this.ctx.currentTime + 0.04);
-    } catch (e) {
+    } catch {
       // ignore
     }
   }
@@ -53,7 +53,7 @@ class SoundFX {
       gain.connect(this.ctx.destination);
       osc.start();
       osc.stop(this.ctx.currentTime + 0.15);
-    } catch (e) {
+    } catch {
       // ignore
     }
   }
@@ -76,7 +76,7 @@ class SoundFX {
         osc.start(this.ctx.currentTime + idx * 0.06);
         osc.stop(this.ctx.currentTime + idx * 0.06 + 0.15);
       });
-    } catch (e) {
+    } catch {
       // ignore
     }
   }
@@ -100,7 +100,7 @@ class SoundFX {
         osc.start(start);
         osc.stop(start + 0.22);
       });
-    } catch (e) {
+    } catch {
       // ignore
     }
   }
@@ -121,7 +121,7 @@ class SoundFX {
       gain.connect(this.ctx.destination);
       osc.start();
       osc.stop(this.ctx.currentTime + 0.2);
-    } catch (e) {
+    } catch {
       // ignore
     }
   }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Save, CheckCircle, RefreshCcw, Shield, Sliders, Database, Server } from 'lucide-react';
+import { Settings, Save, CheckCircle, RefreshCcw, Shield, Sliders, Database } from 'lucide-react';
 import { sounds } from '../soundEffects';
 
 export default function SettingsScreen({ config, draws, lang, t, onConfigUpdated, onDrawsUpdated }) {
@@ -9,9 +9,9 @@ export default function SettingsScreen({ config, draws, lang, t, onConfigUpdated
     posId: config?.posId || "POS-SUNMI-01",
     branchName: config?.branchName || "Santral Petyonvil",
     phone: config?.phone || "+1 (305) 555-0199",
-    currency: config?.currency || "HTG",
-    currencySymbol: config?.currencySymbol || "G",
-    cancellationWindowMinutes: config?.cancellationWindowMinutes || 15,
+    currency: config?.currency || "MXN",
+    currencySymbol: config?.currencySymbol || "MX$",
+    cancellationWindowMinutes: config?.cancellationWindowMinutes || 5,
     maxBetPerNumber: config?.maxBetPerNumber || 5000,
     multipliers: {
       bolette_lot1: config?.multipliers?.bolette_lot1 || 50,
@@ -26,6 +26,30 @@ export default function SettingsScreen({ config, draws, lang, t, onConfigUpdated
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [dbStatus, setDbStatus] = useState(null);
+
+  useEffect(() => {
+    if (config) {
+      setFormData({
+        companyName: config.companyName || "LOTO509",
+        companySubtitle: config.companySubtitle || "New York • Florida • Georgia",
+        posId: config.posId || "POS-SUNMI-01",
+        branchName: config.branchName || "Santral Petyonvil",
+        phone: config.phone || "+1 (305) 555-0199",
+        currency: config.currency || "MXN",
+        currencySymbol: config.currencySymbol || "MX$",
+        cancellationWindowMinutes: config.cancellationWindowMinutes ?? 5,
+        maxBetPerNumber: config.maxBetPerNumber || 5000,
+        multipliers: {
+          bolette_lot1: config.multipliers?.bolette_lot1 || 50,
+          bolette_lot2: config.multipliers?.bolette_lot2 || 20,
+          bolette_lot3: config.multipliers?.bolette_lot3 || 10,
+          mariage: config.multipliers?.mariage || 1000,
+          loto3: config.multipliers?.loto3 || 500,
+          loto4: config.multipliers?.loto4 || 5000
+        }
+      });
+    }
+  }, [config]);
 
   useEffect(() => {
     fetch('/api/database/status')
@@ -49,6 +73,9 @@ export default function SettingsScreen({ config, draws, lang, t, onConfigUpdated
       if (!res.ok) throw new Error(data.error || "Erè nan sove paramèt yo");
 
       sounds.success();
+      if (formData.posId) {
+        localStorage.setItem('loto509_device_id', formData.posId.trim().toUpperCase());
+      }
       setSuccessMsg(t.savedSuccess);
       onConfigUpdated(data);
       setTimeout(() => setSuccessMsg(''), 4000);

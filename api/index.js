@@ -15,12 +15,10 @@ function getApp() {
 }
 
 export default async function handler(req, res) {
-  // Always return JSON content type
-  res.setHeader('Content-Type', 'application/json');
-
   try {
     const app = await getApp();
     if (!app) {
+      res.setHeader('Content-Type', 'application/json');
       return res.status(500).json({ 
         error: 'Server module failed to load. Check Vercel build logs.',
         hint: 'Module import error'

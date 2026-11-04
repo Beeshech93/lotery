@@ -1,10 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Printer, DollarSign, TrendingUp, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
+import { Printer, DollarSign, TrendingUp, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 import { sounds } from '../soundEffects';
 
+const getClientLocalDate = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 export default function DailyReportScreen({ config, lang, t }) {
-  const today = new Date().toISOString().split('T')[0];
-  const [reportDate, setReportDate] = useState(today);
+  const [reportDate, setReportDate] = useState(() => getClientLocalDate());
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
 

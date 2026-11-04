@@ -1,16 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, CheckCircle, Calendar, Hash, Send, RefreshCw, AlertCircle } from 'lucide-react';
+import { Trophy, CheckCircle, Send, RefreshCw, AlertCircle } from 'lucide-react';
 import { sounds } from '../soundEffects';
 
-export default function ResultsManagerScreen({ draws, lang, t, onResultPublished }) {
-  const today = new Date().toISOString().split('T')[0];
+const getClientLocalDate = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+export default function ResultsManagerScreen({ draws, config, lang, t, onResultPublished, currentUser }) {
+  const isAdmin = currentUser?.role === 'admin';
   const [selectedDrawId, setSelectedDrawId] = useState(draws[0]?.id || 'ny_midday');
-  const [drawDate, setDrawDate] = useState(today);
+  const [drawDate, setDrawDate] = useState(() => getClientLocalDate());
   const [lot1, setLot1] = useState('');
   const [lot2, setLot2] = useState('');
   const [lot3, setLot3] = useState('');
   const [pick3, setPick3] = useState('');
   const [pick4, setPick4] = useState('');
+
+  const currencySymbol = config?.currencySymbol || (config?.currency === 'HTG' ? 'G' : config?.currency === 'MXN' ? 'MX$' : '$');
 
   const [resultsList, setResultsList] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -63,7 +73,8 @@ export default function ResultsManagerScreen({ draws, lang, t, onResultPublished
         lot2: lot2.padStart(2, '0'),
         lot3: lot3.padStart(2, '0'),
         pick3: pick3.trim() || undefined,
-        pick4: pick4.trim() || undefined
+        pick4: pick4.trim() || undefined,
+        role: currentUser?.role || 'admin'
       };
 
       const res = await fetch('/api/results', {
@@ -75,7 +86,7 @@ export default function ResultsManagerScreen({ draws, lang, t, onResultPublished
       if (!res.ok) throw new Error(data.error || "Erè nan pibliye rezilta a");
 
       sounds.winner();
-      setSuccessMsg(`Rezilta pibliye! ${data.winnersCount} tikè gayan idantifye (Total Pèyman: ${data.totalPayout} G)`);
+      setSuccessMsg(`Rezilta pibliye! ${data.winnersCount} tikè gayan idantifye (Total Pèyman: ${data.totalPayout} ${currencySymbol})`);
       setLot1('');
       setLot2('');
       setLot3('');
@@ -103,7 +114,25 @@ export default function ResultsManagerScreen({ draws, lang, t, onResultPublished
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="results-entry-form">
+        {!isAdmin ? (
+          <div className="results-admin-restricted-box" style={{
+            background: 'rgba(234, 179, 8, 0.08)',
+            border: '1px solid rgba(234, 179, 8, 0.25)',
+            borderRadius: '12px',
+            padding: '1.25rem 1.5rem',
+            margin: '1.25rem 0'
+          }}>
+            <h4 style={{ margin: '0 0 0.5rem 0', color: '#facc15', fontSize: '1rem', fontWeight: 600 }}>
+              🔒 {lang === 'ht' ? "Piblikasyon Rezève pou Admin Santral" : "Publication Réservée à l'Administrateur Central"}
+            </h4>
+            <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              {lang === 'ht'
+                ? `Ou konekte kòm ${currentUser?.name || currentUser?.username} (${currentUser?.role === 'moderator' ? 'Moderatè / Lidè Ekip' : 'Ajan POS'}). Ou gen dwa konsilte tout rezilta ofisyèl yo nan lis ki adwat la, men sèl Administrasyon Santral ki gen otorizasyon pou antre epi pibliye nouvo rezilta tiraj.`
+                : `Connecté en tant que ${currentUser?.name || currentUser?.username} (${currentUser?.role === 'moderator' ? "Modérateur / Chef d'Équipe" : "Agent POS"}). Vous pouvez consulter l'historique officiel dans la liste ci-contre, mais seul l'Administrateur Central est autorisé à publier de nouveaux résultats.`}
+            </p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="results-entry-form">
           <div className="form-row">
             <div className="form-group flex-1">
               <label>{t.drawSelect}</label>
@@ -229,6 +258,7 @@ export default function ResultsManagerScreen({ draws, lang, t, onResultPublished
             <span>{submitting ? "..." : t.publishResults}</span>
           </button>
         </form>
+        )}
       </div>
 
       {/* RIGHT: Results History List */}

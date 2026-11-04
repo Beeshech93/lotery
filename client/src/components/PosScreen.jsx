@@ -36,17 +36,23 @@ export default function PosScreen({
 
   // Live countdown tick (updates every second)
   const [countdownTick, setCountdownTick] = useState(0);
+  const drawsTimestampRef = useRef(Date.now());
+
+  useEffect(() => {
+    drawsTimestampRef.current = Date.now();
+  }, [draws]);
+
   useEffect(() => {
     const timer = setInterval(() => setCountdownTick(prev => prev + 1), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Format countdown from closesInMinutes (recalculated each second)
+  // Format countdown smoothly based on elapsed time from last draws fetch
   const formatCountdown = (closesInMinutes) => {
     if (closesInMinutes <= 0) return null;
     if (closesInMinutes > 720) return null; // skip if >12h (manual override)
-    // Get fractional seconds from the tick
-    const totalSeconds = Math.max(0, Math.floor(closesInMinutes * 60) - (countdownTick % 60));
+    const elapsedSec = Math.floor((Date.now() - drawsTimestampRef.current) / 1000);
+    const totalSeconds = Math.max(0, Math.floor(closesInMinutes * 60) - elapsedSec);
     const hours = Math.floor(totalSeconds / 3600);
     const mins = Math.floor((totalSeconds % 3600) / 60);
     const secs = totalSeconds % 60;
@@ -94,20 +100,13 @@ export default function PosScreen({
   const currentDraw = draws.find(d => d.id === selectedDrawId) || draws[0];
   const currencySymbol = config?.currencySymbol || (config?.currency === 'HTG' ? 'G' : config?.currency === 'MXN' ? 'MX$' : '$');
 
-  // Keyboard shortcut listener (Enter, F2, F4, Esc)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'F2') {
-        e.preventDefault();
-        handleValidateTicket();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        handleClearCart();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cartPlays, selectedDrawId]);
+  const getClientLocalDate = () => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
 
   // Helper to check if a specific number is blocked or restricted for the selected draw
   const getBlockedRule = (gMode, n1, n2, drawId) => {
@@ -373,7 +372,7 @@ export default function PosScreen({
     try {
       const payload = {
         drawId: selectedDrawId,
-        drawDate: new Date().toISOString().split('T')[0],
+        drawDate: getClientLocalDate(),
         sellerId: currentUser?.username || config?.posId || "POS-01",
         sellerName: currentUser?.name || "Agent POS",
         posId: currentUser?.posId || config?.posId || "POS-01",
@@ -403,6 +402,26 @@ export default function PosScreen({
       setIsSubmitting(false);
     }
   };
+
+  // Keyboard shortcut listener (F2, Esc)
+  const validateRef = useRef();
+  validateRef.current = handleValidateTicket;
+  const clearRef = useRef();
+  clearRef.current = handleClearCart;
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'F2') {
+        e.preventDefault();
+        if (validateRef.current) validateRef.current();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        if (clearRef.current) clearRef.current();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Touch on-screen keypad handler
   const handleKeypadPress = (val) => {
@@ -517,7 +536,12 @@ export default function PosScreen({
                   {!draw.isOpen && draw.reopensInMinutes > 0 && (
                     <div className="draw-countdown countdown-closed">
                       <Lock size={12} />
-                      <span>{lang === 'ht' ? 'Relouvri nan' : 'Réouvre dans'} {draw.reopensInMinutes}m</span>
+                      <span>
+                        {lang === 'ht' ? 'Relouvri nan' : 'Réouvre dans'}{' '}
+                        {draw.reopensInMinutes > 60
+                          ? `${Math.floor(draw.reopensInMinutes / 60)}h ${draw.reopensInMinutes % 60}m`
+                          : `${draw.reopensInMinutes}m`}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -654,7 +678,9 @@ export default function PosScreen({
                 <Plus size={20} />
                 <span>{t.addPlay}</span>
               </button>
-              <button type="button" className="btn-add-all-pairs" onClick={handleAddAllPairs}>Add All Pairs</button>
+              <button type="button" className="btn-add-all-pairs" onClick={handleAddAllPairs}>
+                {t.addAllPairs || (lang === 'ht' ? "Ajoute Tout Doub" : "Ajouter Tous les Doubles")}
+              </button>
             </div>
           </div>
 
@@ -766,7 +792,7 @@ export default function PosScreen({
                             if (itemBlocked && itemBlocked.amount === 0) {
                               return (
                                 <span className="cart-blocked-badge" title={itemBlocked.reason || "Nimewo sa a bloke"}>
-                                  <Ban size={11} /> {t.unblock ? 'BLOKE' : 'BLOCKED'}
+                                  <Ban size={11} /> {lang === 'ht' ? 'BLOKE' : 'BLOQUÉ'}
                                 </span>
                               );
                             }
@@ -851,7 +877,7 @@ export default function PosScreen({
                       <Printer size={14} />
                       <span>{t.reprint}</span>
                     </button>
-                    {ticket.status === 'active' && (
+                    {(ticket.status === 'active' || ticket.status === 'pending') && (
                       <button 
                         className="btn-recent-action btn-cancel" 
                         onClick={() => onCancelTicket(ticket.id)}

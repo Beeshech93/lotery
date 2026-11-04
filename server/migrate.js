@@ -103,10 +103,38 @@ export async function runMigration() {
 
       -- Blocked / Bet limits on specific numbers
       CREATE TABLE IF NOT EXISTS loto_blocked_numbers (
+        id VARCHAR(100) PRIMARY KEY,
         draw_id VARCHAR(50) NOT NULL,
         number_key VARCHAR(50) NOT NULL,
+        game_type VARCHAR(50) DEFAULT 'bolette',
         amount NUMERIC NOT NULL DEFAULT 0,
-        PRIMARY KEY (draw_id, number_key)
+        reason TEXT DEFAULT '',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
+
+      -- Ensure columns exist for loto_blocked_numbers if already created previously
+      ALTER TABLE loto_blocked_numbers ADD COLUMN IF NOT EXISTS id VARCHAR(100);
+      ALTER TABLE loto_blocked_numbers ADD COLUMN IF NOT EXISTS game_type VARCHAR(50) DEFAULT 'bolette';
+      ALTER TABLE loto_blocked_numbers ADD COLUMN IF NOT EXISTS reason TEXT DEFAULT '';
+      ALTER TABLE loto_blocked_numbers ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_blocked_draw_num ON loto_blocked_numbers(draw_id, number_key);
+
+      -- Users Table (POS Agents & Admins)
+      CREATE TABLE IF NOT EXISTS loto_users (
+        id VARCHAR(50) PRIMARY KEY,
+        username VARCHAR(100) UNIQUE NOT NULL,
+        pin VARCHAR(20) NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        role VARCHAR(20) DEFAULT 'agent',
+        pos_id VARCHAR(100),
+        branch_name VARCHAR(255),
+        country VARCHAR(5) DEFAULT 'HT',
+        team_name VARCHAR(100),
+        supervisor_id VARCHAR(50),
+        enabled BOOLEAN DEFAULT true,
+        last_login TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
 
       -- Indexes for fast lookup
@@ -116,12 +144,15 @@ export async function runMigration() {
       CREATE INDEX IF NOT EXISTS idx_results_draw ON loto_results(draw_id, draw_date);
     `);
 
-    // Add country column for timezone fusion (safe to run multiple times)
+    // Ensure columns exist on loto_users (safe to run multiple times)
     try {
       await client.query(`ALTER TABLE loto_users ADD COLUMN IF NOT EXISTS country VARCHAR(5) DEFAULT 'HT'`);
-      console.log('[MIGRATION] country column ensured on loto_users.');
+      await client.query(`ALTER TABLE loto_users ADD COLUMN IF NOT EXISTS team_name VARCHAR(100)`);
+      await client.query(`ALTER TABLE loto_users ADD COLUMN IF NOT EXISTS supervisor_id VARCHAR(50)`);
+      await client.query(`ALTER TABLE loto_tickets ADD COLUMN IF NOT EXISTS seller_name VARCHAR(255)`);
+      console.log('[MIGRATION] country, team_name, supervisor_id on loto_users and seller_name on loto_tickets ensured.');
     } catch (e) {
-      console.warn('[MIGRATION] country column may already exist:', e.message);
+      console.warn('[MIGRATION] Column alter warning:', e.message);
     }
 
     console.log('[MIGRATION] Tables & Indexes created successfully in Neon.');
@@ -228,9 +259,48 @@ export async function runMigration() {
         }
       }
 
-      console.log('[MIGRATION] Seeding completed.');
+      // Seed/sync default users (admin, moderator, agents)
+      const defaultUsers = [
+        { id: 'usr_admin', username: 'admin', pin: '5090', password: 'admin509', name: 'Administrateur Central LOTO509', role: 'admin', pos_id: 'POS-ADMIN-00', branch_name: 'Direksyon Jeneral LOTO509', country: 'HT', team_name: 'Direksyon Santral', supervisor_id: null },
+        { id: 'usr_mod_01', username: 'mod1', pin: '4040', password: 'mod509', name: 'Alain Dessalines (Lidè Ekip Nò)', role: 'moderator', pos_id: 'POS-MOD-01', branch_name: 'Ekip Nò & Dèlma', country: 'HT', team_name: 'Ekip Nò', supervisor_id: 'usr_admin' },
+        { id: 'usr_agent_01', username: 'agent1', pin: '1234', password: '1234', name: 'Jean-Baptiste Pierre (Petyonvil)', role: 'agent', pos_id: 'POS-SUNMI-01', branch_name: 'Santral Petyonvil / Pétion-Ville', country: 'HT', team_name: 'Ekip Santral', supervisor_id: 'usr_admin' },
+        { id: 'usr_agent_02', username: 'agent2', pin: '5678', password: '5678', name: 'Marie-Claire Joseph (Dèlma)', role: 'agent', pos_id: 'POS-SUNMI-02', branch_name: 'Sikisal Dèlma 33 / Delmas', country: 'HT', team_name: 'Ekip Nò', supervisor_id: 'usr_mod_01' }
+      ];
+
+      for (const u of defaultUsers) {
+        await client.query(`
+          INSERT INTO loto_users (id, username, pin, password, name, role, pos_id, branch_name, country, team_name, supervisor_id, enabled)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
+          ON CONFLICT (username) DO UPDATE SET
+            team_name = EXCLUDED.team_name,
+            supervisor_id = EXCLUDED.supervisor_id,
+            role = EXCLUDED.role,
+            name = EXCLUDED.name,
+            branch_name = EXCLUDED.branch_name,
+            pos_id = EXCLUDED.pos_id
+        `, [u.id, u.username, u.pin, u.password, u.name, u.role, u.pos_id, u.branch_name, u.country, u.team_name, u.supervisor_id]);
+      }
+
+      console.log('[MIGRATION] Seeding and team structure completed.');
     } else {
-      console.log('[MIGRATION] Database already contains records. Skipping seed.');
+      console.log('[MIGRATION] Database already contains records. Ensuring users table and team roles are seeded...');
+      const defaultUsers = [
+        { id: 'usr_admin', username: 'admin', pin: '5090', password: 'admin509', name: 'Administrateur Central LOTO509', role: 'admin', pos_id: 'POS-ADMIN-00', branch_name: 'Direksyon Jeneral LOTO509', country: 'HT', team_name: 'Direksyon Santral', supervisor_id: null },
+        { id: 'usr_mod_01', username: 'mod1', pin: '4040', password: 'mod509', name: 'Alain Dessalines (Lidè Ekip Nò)', role: 'moderator', pos_id: 'POS-MOD-01', branch_name: 'Ekip Nò & Dèlma', country: 'HT', team_name: 'Ekip Nò', supervisor_id: 'usr_admin' },
+        { id: 'usr_agent_01', username: 'agent1', pin: '1234', password: '1234', name: 'Jean-Baptiste Pierre (Petyonvil)', role: 'agent', pos_id: 'POS-SUNMI-01', branch_name: 'Santral Petyonvil / Pétion-Ville', country: 'HT', team_name: 'Ekip Santral', supervisor_id: 'usr_admin' },
+        { id: 'usr_agent_02', username: 'agent2', pin: '5678', password: '5678', name: 'Marie-Claire Joseph (Dèlma)', role: 'agent', pos_id: 'POS-SUNMI-02', branch_name: 'Sikisal Dèlma 33 / Delmas', country: 'HT', team_name: 'Ekip Nò', supervisor_id: 'usr_mod_01' }
+      ];
+
+      for (const u of defaultUsers) {
+        await client.query(`
+          INSERT INTO loto_users (id, username, pin, password, name, role, pos_id, branch_name, country, team_name, supervisor_id, enabled)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
+          ON CONFLICT (username) DO UPDATE SET
+            team_name = COALESCE(loto_users.team_name, EXCLUDED.team_name),
+            supervisor_id = COALESCE(loto_users.supervisor_id, EXCLUDED.supervisor_id),
+            role = COALESCE(loto_users.role, EXCLUDED.role)
+        `, [u.id, u.username, u.pin, u.password, u.name, u.role, u.pos_id, u.branch_name, u.country, u.team_name, u.supervisor_id]);
+      }
     }
 
   } catch (err) {
